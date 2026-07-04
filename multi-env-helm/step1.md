@@ -14,16 +14,3 @@ helm template prod ./app-chart -f ./app-chart/values-prod.yaml
 ```
 
 Confirm the `replicas:` and `image:` lines match the table, then click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-The template already reads `replicaCount` and `image.tag`. You only need to set
-those keys in each env file, e.g. for prod:
-
-```yaml
-replicaCount: 5
-image:
-  tag: prod
-```
-</details>

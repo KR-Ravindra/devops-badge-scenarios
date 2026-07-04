@@ -14,13 +14,3 @@ kubectl -n apps get deploy,pods
 ```
 
 You decide the resources. When both hostnames route to the right app, click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-HTTP host-based routing is exactly what Ingress is for. You'll need a Service in front of each Deployment, then an Ingress with a rule per host. Verify from inside the node with:
-
-```
-curl -H "Host: web-a.company.com" http://localhost/
-```
-</details>

@@ -20,17 +20,3 @@ Requirements you'll be graded on:
 3. The per-service scripts are thin — the duplicated stage logic is gone from them.
 
 When done, click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-Create `/root/ci/lib/pipeline.sh` with functions `install_deps`, `run_tests`,
-`package` that take `$1` = service name. Each build script becomes:
-
-```bash
-#!/bin/bash
-set -e
-source "$(dirname "$0")/lib/pipeline.sh"
-build service-a
-```
-</details>

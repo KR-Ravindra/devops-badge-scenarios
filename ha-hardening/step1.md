@@ -18,20 +18,3 @@ kubectl -n prod get pods -o wide     # confirm pods land on different nodes
 ```
 
 When done, click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-Bump `spec.replicas` to 3, add a `readinessProbe` (httpGet path `/` port 8080),
-add `topologySpreadConstraints` with `topologyKey: kubernetes.io/hostname`, and
-create a PDB:
-
-```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata: { name: payments, namespace: prod }
-spec:
-  minAvailable: 2
-  selector: { matchLabels: { app: payments } }
-```
-</details>

@@ -13,22 +13,3 @@ docker run -d -p 8080:8080 --name t app:slim && sleep 1 && curl localhost:8080
 ```
 
 Then click **Check** (the grader builds your Dockerfile itself).
-
-<details>
-<summary>Hint</summary>
-
-Use a multi-stage build: compile in `golang`, then copy only the static binary
-into a tiny base.
-
-```dockerfile
-FROM golang:1.22 AS build
-WORKDIR /src
-COPY . .
-RUN CGO_ENABLED=0 go build -o /app .
-
-FROM alpine:3.20
-COPY --from=build /app /app
-EXPOSE 8080
-CMD ["/app"]
-```
-</details>

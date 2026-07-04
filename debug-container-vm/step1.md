@@ -14,15 +14,3 @@ docker exec web sh -c 'command -v curl && curl -sI localhost:80 || wget -qO- loc
 > actually listens on inside the container.
 
 Fix it, then click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-nginx listens on port **80** inside the container, but the container was published
-as `-p 8080:8080`. Re-run it mapping host 8080 to container 80:
-
-```
-docker rm -f web
-docker run -d --name web -p 8080:80 nginx
-```
-</details>

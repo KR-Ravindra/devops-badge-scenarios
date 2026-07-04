@@ -10,14 +10,3 @@ kubectl get endpoints orders         # should list pod IPs once fixed
 ```
 
 When `kubectl get endpoints orders` shows the pod IPs, click **Check**.
-
-<details>
-<summary>Hint</summary>
-
-The Service selector is `app: order` but the pods are labelled `app: orders`.
-Fix the selector:
-
-```
-kubectl patch svc orders -p '{"spec":{"selector":{"app":"orders"}}}'
-```
-</details>
