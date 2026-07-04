@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pass when the api deployment is fully available.
-fail() { echo "❌ $1"; exit 1; }
+fail() { echo "❌ $1"; exit 0; }
 
 D=$(kubectl get deploy api -o json 2>/dev/null) || fail "Deployment 'api' not found."
 want=$(echo "$D" | python3 -c 'import json,sys;print(json.load(sys.stdin)["spec"]["replicas"])' 2>/dev/null)

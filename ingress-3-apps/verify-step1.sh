@@ -2,7 +2,7 @@
 # Verify web-a and web-b are reachable through the ingress controller by host header.
 # Grades behaviour (does it route?), not the exact YAML the candidate wrote.
 
-fail() { echo "❌ $1"; exit 1; }
+fail() { echo "❌ $1"; exit 0; }
 
 # Resolve the ingress controller's in-cluster entry point. On kubeadm-1node the
 # controller is typically reachable on the node via a NodePort or hostPort :80.

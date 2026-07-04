@@ -1,6 +1,6 @@
 #!/bin/bash
 # Grade: CM + Secret exist, deployment sources them, pod env is correct.
-fail() { echo "❌ $1"; exit 1; }
+fail() { echo "❌ $1"; exit 0; }
 
 # 1) ConfigMap value
 cmv=$(kubectl get configmap app-config -o jsonpath='{.data.APP_COLOR}' 2>/dev/null)

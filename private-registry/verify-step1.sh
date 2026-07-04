@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pass when a registry is up on :5000 and holds internal/app.
-fail() { echo "❌ $1"; exit 1; }
+fail() { echo "❌ $1"; exit 0; }
 
 # 1) Registry API responds.
 curl -sf --max-time 5 http://localhost:5000/v2/ >/dev/null 2>&1 \

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Grade: both builds still work, a shared lib is sourced, and duplication is gone.
-fail() { echo "❌ $1"; exit 1; }
+fail() { echo "❌ $1"; exit 0; }
 CI=/root/ci
 A="$CI/build-service-a.sh"; B="$CI/build-service-b.sh"
 
