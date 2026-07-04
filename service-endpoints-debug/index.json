@@ -1,0 +1,13 @@
+{
+  "title": "The Service Has No Endpoints",
+  "description": "A Service exists and pods are running, but requests to the Service fail because it selects nothing. Diagnose and fix the wiring. Tests Service selectors, endpoints and targetPort.",
+  "details": {
+    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "steps": [
+      { "title": "Get the Service routing to pods", "text": "step1.md", "verify": "verify-step1.sh" }
+    ],
+    "finish": { "text": "finish.md" }
+  },
+  "backend": { "imageid": "kubernetes-kubeadm-1node" },
+  "interface": { "layout": "ide" }
+}

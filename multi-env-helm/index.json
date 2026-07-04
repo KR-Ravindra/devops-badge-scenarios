@@ -1,0 +1,13 @@
+{
+  "title": "One Chart, Three Environments",
+  "description": "Deploy the same Helm chart to dev, staging and prod with per-environment configuration (replica count and image tag) without copying the chart. Tests Helm values precedence and templating.",
+  "details": {
+    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "steps": [
+      { "title": "Make each environment render correctly", "text": "step1.md", "verify": "verify-step1.sh" }
+    ],
+    "finish": { "text": "finish.md" }
+  },
+  "backend": { "imageid": "kubernetes-kubeadm-1node" },
+  "interface": { "layout": "ide" }
+}

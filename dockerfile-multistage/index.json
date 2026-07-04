@@ -1,0 +1,13 @@
+{
+  "title": "Slim a Bloated Docker Image",
+  "description": "A working but huge single-stage Docker image must be rebuilt as a small multi-stage image that still runs. Tests multi-stage builds and image hygiene.",
+  "details": {
+    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "steps": [
+      { "title": "Make it small and still working", "text": "step1.md", "verify": "verify-step1.sh" }
+    ],
+    "finish": { "text": "finish.md" }
+  },
+  "backend": { "imageid": "ubuntu" },
+  "interface": { "layout": "ide" }
+}

@@ -1,0 +1,36 @@
+# Step 1 — Extract the shared logic
+
+In `/root/ci` there are two build scripts:
+
+```
+build-service-a.sh
+build-service-b.sh
+```
+
+They are almost identical — the **install → test → package** stages are copy-pasted
+and only the service name differs. Refactor them so the common stages live in **one
+shared library** that both scripts use (DRY). You choose the mechanism (a sourced
+`lib/*.sh`, functions taking the service as a parameter, etc.).
+
+Requirements you'll be graded on:
+
+1. Both `build-service-a.sh` and `build-service-b.sh` still run successfully and
+   produce their `.deps`, `.tests` and `.artifact` files in `/root/ci/out`.
+2. A **shared file** exists that both build scripts pull in (e.g. via `source`).
+3. The per-service scripts are thin — the duplicated stage logic is gone from them.
+
+When done, click **Check**.
+
+<details>
+<summary>Hint</summary>
+
+Create `/root/ci/lib/pipeline.sh` with functions `install_deps`, `run_tests`,
+`package` that take `$1` = service name. Each build script becomes:
+
+```bash
+#!/bin/bash
+set -e
+source "$(dirname "$0")/lib/pipeline.sh"
+build service-a
+```
+</details>
