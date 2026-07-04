@@ -1,13 +1,26 @@
 {
-  "title": "Get a Broken Deployment Healthy",
+  "title": "02 \u00b7 Get a Broken Deployment Healthy",
   "description": "A Deployment is stuck and never becomes Ready. Diagnose from pod state and events, and fix it so it rolls out. Tests core Kubernetes debugging.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Make the deployment Ready", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Make the deployment Ready",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "kubernetes-kubeadm-1node" },
-  "interface": { "layout": "ide" }
+  "backend": {
+    "imageid": "kubernetes-kubeadm-1node"
+  },
+  "interface": {
+    "layout": "ide"
+  }
 }

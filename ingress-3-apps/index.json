@@ -1,5 +1,5 @@
 {
-  "title": "Expose 3 Apps From a Kubernetes Cluster",
+  "title": "05 \u00b7 Expose 3 Apps From a Kubernetes Cluster",
   "description": "Two web apps and one FTP app run in the cluster but are unreachable from outside. Make each reachable at its assigned hostname/port. Tests Services, Ingress (HTTP-only) vs L4 exposure for non-HTTP traffic.",
   "details": {
     "intro": {

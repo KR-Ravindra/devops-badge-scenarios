@@ -1,13 +1,26 @@
 {
-  "title": "Containerized App Unreachable on a VM",
+  "title": "01 \u00b7 Containerized App Unreachable on a VM",
   "description": "A Docker container is running on the VM but the web app is not reachable. Diagnose the layers (container, port mapping, host firewall) and make it respond. Tests systematic troubleshooting.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Make the app reachable", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Make the app reachable",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "ubuntu" },
-  "interface": { "layout": "terminal" }
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "terminal"
+  }
 }

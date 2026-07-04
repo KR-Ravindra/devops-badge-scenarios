@@ -1,13 +1,26 @@
 {
-  "title": "Make a Critical App Survive Failure",
+  "title": "10 \u00b7 Make a Critical App Survive Failure (capstone)",
   "description": "A single-replica Deployment must survive pod-level and node-level disruption. Add replicas, a PodDisruptionBudget, anti-affinity/spread, and health probes. Tests HA hardening on Kubernetes.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Harden the deployment for HA", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Harden the deployment for HA",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "kubernetes-kubeadm-2nodes" },
-  "interface": { "layout": "ide" }
+  "backend": {
+    "imageid": "kubernetes-kubeadm-2nodes"
+  },
+  "interface": {
+    "layout": "ide"
+  }
 }

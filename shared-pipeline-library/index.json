@@ -1,13 +1,26 @@
 {
-  "title": "Refactor Duplicated Pipelines Into a Shared Library",
+  "title": "09 \u00b7 Refactor Duplicated Pipelines Into a Shared Library",
   "description": "Two service build scripts duplicate the same stages. Extract the shared logic into one reusable library both scripts use, without breaking either build. Tests DRY and shared-pipeline design.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Extract the shared logic", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Extract the shared logic",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "ubuntu" },
-  "interface": { "layout": "ide" }
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
 }

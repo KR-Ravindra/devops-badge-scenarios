@@ -1,13 +1,26 @@
 {
-  "title": "Wire Config and Secrets Into a Pod",
+  "title": "04 \u00b7 Wire Config and Secrets Into a Pod",
   "description": "A Deployment needs a non-secret setting from a ConfigMap and a credential from a Secret, injected as env vars. Create them and wire them in. Tests ConfigMaps, Secrets and env injection.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Inject the config and secret", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Inject the config and secret",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "kubernetes-kubeadm-1node" },
-  "interface": { "layout": "ide" }
+  "backend": {
+    "imageid": "kubernetes-kubeadm-1node"
+  },
+  "interface": {
+    "layout": "ide"
+  }
 }

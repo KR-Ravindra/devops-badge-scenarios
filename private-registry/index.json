@@ -1,13 +1,26 @@
 {
-  "title": "Stand Up a Private Artifact Registry",
+  "title": "07 \u00b7 Stand Up a Private Artifact Registry",
   "description": "Run a private container registry, push an internal image to it, and pull it back. Tests centralized artifact/dependency sharing and registry basics.",
   "details": {
-    "intro": { "text": "intro.md", "background": "setup.sh" },
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
     "steps": [
-      { "title": "Run the registry and publish an image", "text": "step1.md", "verify": "verify-step1.sh" }
+      {
+        "title": "Run the registry and publish an image",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      }
     ],
-    "finish": { "text": "finish.md" }
+    "finish": {
+      "text": "finish.md"
+    }
   },
-  "backend": { "imageid": "ubuntu" },
-  "interface": { "layout": "terminal" }
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "terminal"
+  }
 }
