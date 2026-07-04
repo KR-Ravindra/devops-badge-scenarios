@@ -1,0 +1,31 @@
+{
+  "title": "Expose 3 Apps From a Kubernetes Cluster",
+  "description": "Two web apps and one FTP app run in the cluster but are unreachable from outside. Make each reachable at its assigned hostname/port. Tests Services, Ingress (HTTP-only) vs L4 exposure for non-HTTP traffic.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh"
+    },
+    "steps": [
+      {
+        "title": "Expose the two web apps",
+        "text": "step1.md",
+        "verify": "verify-step1.sh"
+      },
+      {
+        "title": "Expose the FTP app",
+        "text": "step2.md",
+        "verify": "verify-step2.sh"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "kubernetes-kubeadm-1node"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
