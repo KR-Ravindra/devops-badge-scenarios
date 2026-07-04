@@ -1,16 +1,26 @@
 # Step 1 — Make the app reachable
 
-The goal: `curl http://localhost:8080` returns the nginx welcome page.
-
-Work through it methodically:
+A web app is deployed with Docker Compose at `/root/app/docker-compose.yml` and is
+running, but this fails:
 
 ```
-docker ps                 # is it running? what ports are mapped?
-docker logs web           # is the app healthy inside?
-docker exec web sh -c 'command -v curl && curl -sI localhost:80 || wget -qO- localhost:80 | head'
+curl http://localhost:8080
 ```
 
-> Pay attention to the **PORTS** column in `docker ps` versus the port the app
-> actually listens on inside the container.
+**Goal:** make `curl http://localhost:8080` return the web page.
 
-Fix it, then click **Check**.
+The Compose file is open in the editor — diagnose why it's unreachable and fix it.
+Apply your change with:
+
+```
+cd /root/app && docker compose up -d
+```
+
+**Check your result anytime** (does not block you):
+
+```
+check
+```
+
+Click **Continue** whenever you want to move on — you can proceed even if it's not
+passing yet.
