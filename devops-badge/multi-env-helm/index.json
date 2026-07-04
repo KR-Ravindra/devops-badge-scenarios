@@ -9,8 +9,7 @@
     "steps": [
       {
         "title": "Make each environment render correctly",
-        "text": "step1.md",
-        "verify": "verify-step1.sh"
+        "text": "step1.md"
       }
     ],
     "finish": {

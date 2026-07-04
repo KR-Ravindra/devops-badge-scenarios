@@ -17,4 +17,6 @@ kubectl -n prod get pdb
 kubectl -n prod get pods -o wide     # confirm pods land on different nodes
 ```
 
-When done, click **Check**.
+When done, run `check`.
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.

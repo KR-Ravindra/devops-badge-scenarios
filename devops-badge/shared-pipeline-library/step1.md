@@ -19,4 +19,6 @@ Requirements you'll be graded on:
 2. A **shared file** exists that both build scripts pull in (e.g. via `source`).
 3. The per-service scripts are thin — the duplicated stage logic is gone from them.
 
-When done, click **Check**.
+When done, run `check`.
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.

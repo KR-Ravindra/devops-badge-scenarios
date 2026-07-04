@@ -9,4 +9,6 @@ kubectl get pods -l app=orders --show-labels   # what labels do the pods have?
 kubectl get endpoints orders         # should list pod IPs once fixed
 ```
 
-When `kubectl get endpoints orders` shows the pod IPs, click **Check**.
+When `kubectl get endpoints orders` shows the pod IPs, run `check`.
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.

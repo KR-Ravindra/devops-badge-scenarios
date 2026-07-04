@@ -9,8 +9,7 @@
     "steps": [
       {
         "title": "Harden the deployment for HA",
-        "text": "step1.md",
-        "verify": "verify-step1.sh"
+        "text": "step1.md"
       }
     ],
     "finish": {

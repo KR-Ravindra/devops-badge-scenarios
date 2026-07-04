@@ -13,4 +13,6 @@ Check the running apps:
 kubectl -n apps get deploy,pods
 ```
 
-You decide the resources. When both hostnames route to the right app, click **Check**.
+You decide the resources. When both hostnames route to the right app, run `check`.
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.

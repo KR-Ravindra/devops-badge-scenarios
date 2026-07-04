@@ -1,10 +1,11 @@
 # DevOps Badge — Evaluation Guide
 
-Ten hands-on scenarios. Each one auto-grades a **pass/fail** via its `verify-*.sh`
-(the ✅/❌ the candidate sees). But the badge decision should use **more than
-pass/fail** — watch *how* they solve it. For each scenario below:
+Ten hands-on scenarios. Grading is a self-serve **`check`** command in each
+environment (prints `✅ PASS` / `❌ NOT YET`) — it does **not** gate progress; the
+candidate can always continue. So the badge decision is **yours to make by
+observing** — run `check` yourself and watch *how* they solve it. For each scenario:
 
-- **Auto-pass** = the objective bar the grader enforces.
+- **Auto-pass** = the objective bar `check` reports.
 - **Weak / Solid / Strong** = what to look for while observing, for the badge score.
 
 Suggested overall bar: **7/10 auto-passes**, with at least Solid on the two High

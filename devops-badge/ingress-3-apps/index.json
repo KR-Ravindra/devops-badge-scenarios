@@ -9,13 +9,11 @@
     "steps": [
       {
         "title": "Expose the two web apps",
-        "text": "step1.md",
-        "verify": "verify-step1.sh"
+        "text": "step1.md"
       },
       {
         "title": "Expose the FTP app",
-        "text": "step2.md",
-        "verify": "verify-step2.sh"
+        "text": "step2.md"
       }
     ],
     "finish": {

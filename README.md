@@ -34,8 +34,23 @@ cluster-level tier of **Q6**. **Q1/Q2** dropped as low-signal.
 
 - `index.json` — scenario definition: intro, steps (each with a `verify` script), finish, backend image.
 - `intro.md` / `step*.md` / `finish.md` — markdown shown to the candidate.
-- `setup.sh` — background script that seeds the environment (referenced as `intro.background`).
-- `verify-*.sh` — grading script per step; exit `0` = pass, non-zero = fail (last line shown to candidate).
+- `setup.sh` — background script that seeds the environment (referenced as `intro.background`) **and installs a `check` command** on the host.
+
+## Interaction model (important)
+
+Steps have **no gating verify** — each step has a plain **Continue** button, so a
+candidate is never stuck and a wrong attempt never false-passes or reveals the answer.
+
+Grading is a **self-serve `check` command** installed into the environment by
+`setup.sh`. The candidate (or interviewer) runs `check` in the terminal to see a
+`✅ PASS` / `❌ NOT YET` verdict — informational only, it never blocks progress.
+Finish pages are neutral (no solution). Solutions + scoring rubric live in
+`EVALUATION.md` (interviewer-only).
+
+> Why: KillerCoda's Check button decides pass/fail purely by exit code — `exit 0`
+> advances (and shows the finish page, which would spoil the answer), non-zero blocks.
+> There's no "fail but continue", so gating is incompatible with "always move on".
+> Dropping the gate and grading via `check` gives both.
 
 ## Arrangement — a Course (free tier, repo-defined)
 

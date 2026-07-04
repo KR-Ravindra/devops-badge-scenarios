@@ -13,4 +13,6 @@ helm template dev ./app-chart -f ./app-chart/values-dev.yaml
 helm template prod ./app-chart -f ./app-chart/values-prod.yaml
 ```
 
-Confirm the `replicas:` and `image:` lines match the table, then click **Check**.
+Confirm the `replicas:` and `image:` lines match the table, then run `check`.
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.

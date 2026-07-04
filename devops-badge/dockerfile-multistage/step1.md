@@ -12,4 +12,6 @@ docker images app:slim              # check the SIZE column
 docker run -d -p 8080:8080 --name t app:slim && sleep 1 && curl localhost:8080
 ```
 
-Then click **Check** (the grader builds your Dockerfile itself).
+Then run `check` (the grader builds your Dockerfile itself).
+
+> Run `check` any time to see your result. Click **Continue** to move on whenever you want — you can proceed even if it isn't passing yet.
