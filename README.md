@@ -37,21 +37,22 @@ cluster-level tier of **Q6**. **Q1/Q2** dropped as low-signal.
 - `setup.sh` — background script that seeds the environment (referenced as `intro.background`).
 - `verify-*.sh` — grading script per step; exit `0` = pass, non-zero = fail (last line shown to candidate).
 
-## Arrangement — a Course
+## Arrangement — a Course (free tier, repo-defined)
 
-The 10 scenarios are ordered `01 … 10` in their titles (easy Docker warm-up →
-k8s debugging → Helm/CI → HA capstone, domains interleaved). Group them into a
-single **Course** so a candidate walks the whole badge start-to-finish from one URL.
+The 10 scenarios live under the **`devops-badge/`** subdirectory, which KillerCoda
+treats as a **course** (subdirectory = course grouping — a free-tier feature, no
+paid dashboard needed). **`devops-badge/structure.json`** sets the course title,
+description, and the scenario order (Docker warm-up → k8s debugging → Helm/CI →
+HA capstone, domains interleaved).
 
-> A KillerCoda **Course is created in the dashboard**, not from a repo file:
-> Creator profile → **Courses** → **New course** → add the 10 scenarios in title
-> order → save. The repo stays as 10 scenarios; the course just wraps them.
+> With a `structure.json` present, only the scenarios it lists are shown, in that
+> order. To reorder or rename, edit `devops-badge/structure.json` and push.
 
 ## Publishing
 
-1. On killercoda.com → Creator dashboard → link this repo (detects each `*/index.json`).
-2. Build the **Course** (above) in title order.
-3. Set each scenario / the course to **Unlisted**; make this GitHub repo **private** again.
+1. On killercoda.com → Creator profile → add this GitHub repo (re-syncs on every push).
+2. The `devops-badge/` course appears automatically with its 10 scenarios in order.
+3. Set the course / scenarios to **Unlisted**; make this GitHub repo **private** again.
 4. Share the course link with the candidate during a screen-shared session.
 
 ## Future work

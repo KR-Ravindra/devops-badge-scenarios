@@ -1,0 +1,16 @@
+{
+  "title": "DevOps Badge",
+  "description": "Hands-on DevOps assessment. Ten scenarios across containers, Kubernetes, Helm, CI and artifact management — each a broken or empty environment you must fix. Auto-graded; a failed check still lets you move on.",
+  "items": [
+    { "path": "debug-container-vm" },
+    { "path": "fix-crashloop" },
+    { "path": "service-endpoints-debug" },
+    { "path": "configmap-secret-wiring" },
+    { "path": "ingress-3-apps" },
+    { "path": "multi-env-helm" },
+    { "path": "private-registry" },
+    { "path": "dockerfile-multistage" },
+    { "path": "shared-pipeline-library" },
+    { "path": "ha-hardening" }
+  ]
+}
