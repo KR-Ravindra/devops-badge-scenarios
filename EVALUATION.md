@@ -1,6 +1,6 @@
 # DevOps Badge — Evaluation Guide
 
-Ten hands-on scenarios. Grading is a self-serve **`check`** command in each
+Eleven hands-on scenarios. Grading is a self-serve **`check`** command in each
 environment (prints `✅ PASS` / `❌ NOT YET`) — it does **not** gate progress; the
 candidate can always continue. So the badge decision is **yours to make by
 observing** — run `check` yourself and watch *how* they solve it. For each scenario:
@@ -23,6 +23,7 @@ scenarios (`ha-hardening`, and the design follow-up on multi-region — see note
 | 8 | `dockerfile-multistage` | — | Multi-stage builds, image hygiene | Medium | 12 min |
 | 9 | `configmap-secret-wiring` | — | ConfigMaps, Secrets, env injection | Low–Med | 10 min |
 | 10 | `service-endpoints-debug` | — | Service selectors/endpoints debugging | Medium | 10 min |
+| 11 | `jenkins-deploy-to-k8s` | Capstone 1 (M11 L06) | Jenkins pipeline: Maven → image → registry → k8s deploy | High | 40 min (+ ~5 min setup) |
 
 > **Design-only questions (not simulated):** Q8 (multi-region AWS architecture) and
 > the cluster-level tier of Q6 (multi-cluster/multi-AZ) don't fit a single-node lab.
@@ -90,3 +91,13 @@ scenarios (`ha-hardening`, and the design follow-up on multi-region — see note
 - **Weak:** deletes/recreates the Service or the pods blindly.
 - **Solid:** compares selector to pod labels, fixes the selector, confirms endpoints.
 - **Strong:** checks `get endpoints` first; separates selector mismatch from targetPort mismatch from unhealthy pods.
+
+## 11. jenkins-deploy-to-k8s (Capstone 1, DevOps M11 L06 "Deploy to EKS from Jenkins")
+Stand-ins: k3s for EKS, `registry:2` on :5000 for ECR, plain kubeconfig instead of AWS keys + `aws-iam-authenticator`. Jenkins is pre-installed with Maven and the docker CLI but **no kubectl and no cluster access**; the job `java-maven-app` exists and reads the Jenkinsfile from the committed `master` of `/root/java-maven-app`.
+**Auto-pass:** latest build green; the tag it pushed is in the registry, isn't `latest`, and is the image the `prod/java-maven-app` Deployment runs; rollout complete; Service `java-maven-app:8080` returns HTTP 200.
+**Built-in trap (from the course repo as-is):** the Dockerfile `ENTRYPOINT` hardcodes `java-maven-app-1.0-SNAPSHOT.jar` while `pom.xml` is `1.1.0-SNAPSHOT`, so the first deploy crash-loops. A candidate who only reads the green build will miss it.
+- **Weak:** edits files without committing and wonders why Jenkins doesn't see them; deploys by hand with kubectl outside Jenkins; uses `:latest`; copies the admin kubeconfig into the repo or the Jenkinsfile.
+- **Solid:** installs kubectl in the Jenkins container, gives Jenkins the kubeconfig (credential or `jenkins_home/.kube`), build → push → apply with a unique tag (`BUILD_NUMBER` or app version), finds and fixes the jar-name crash from `kubectl logs`.
+- **Strong:** stores the kubeconfig as a Jenkins credential (`withCredentials` file / `withKubeConfig`), and uses a ServiceAccount scoped to `prod` instead of cluster-admin; waits on `rollout status` so a crash fails the build; explains what changes on real EKS (aws-iam-authenticator / `aws eks update-kubeconfig`, aws-auth/access entries, ECR login with `aws ecr get-login-password`).
+- **Ask in the interview:** "In EKS, how does Jenkins authenticate to the cluster, and what IAM permissions does that identity need?" (the part the lab can't test).
+Reference solution: `tests/jenkins-deploy-to-k8s/solve.sh` (CI runs setup → check fails → solve → check passes).

@@ -1,0 +1,26 @@
+{
+  "title": "11 · Deploy to Kubernetes From a Jenkins Pipeline",
+  "description": "Capstone: build a Java app with Maven, package it as an image, push it to a private registry and deploy it to a Kubernetes cluster, all from a Jenkins pipeline. The lab stands in for EKS and ECR.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Build, push and deploy from Jenkins",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
