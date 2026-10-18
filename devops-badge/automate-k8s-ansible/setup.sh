@@ -122,7 +122,7 @@ def run(cmd, **kw):
     return r.returncode, r.stdout, r.stderr
 
 def kget(*args):
-    rc, out, _ = run(KC + list(args) + ["-o", "json"])
+    rc, out, _ = run(KC + list(args) + ["-o", "json", "--show-managed-fields"])
     return json.loads(out) if rc == 0 and out else None
 
 # playbook committed
