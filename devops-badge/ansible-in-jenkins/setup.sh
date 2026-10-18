@@ -174,7 +174,9 @@ for i in $(seq 1 90); do
   curl -sf -u admin:admin http://localhost:8080/job/java-maven-app/api/json >/dev/null 2>&1 && break; sleep 3
 done
 curl -sf -u admin:admin http://localhost:8080/job/java-maven-app/api/json >/dev/null
-curl -sf -u admin:admin http://localhost:8080/credentials/store/system/domain/_/api/json | grep -q ec2-server-key
+for c in ansible-server-key ec2-server-key; do
+  curl -sf -u admin:admin http://localhost:8080/credentials/store/system/domain/_/credential/$c/api/json >/dev/null
+done
 docker exec jenkins git config --global --add safe.directory /repos/java-maven-app
 
 # --- self-serve grader (run `check`) ---
