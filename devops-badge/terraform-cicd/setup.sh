@@ -106,7 +106,7 @@ RUN mkdir -p /opt/tf-plugin-cache /tmp/tfwarm \\
  && printf 'terraform {\\n  required_providers {\\n    docker = { source = "kreuzwerker/docker", version = "$TF_DOCKER_PROVIDER" }\\n  }\\n}\\n' > /tmp/tfwarm/main.tf \\
  && cd /tmp/tfwarm && terraform init -backend=false -input=false && rm -rf /tmp/tfwarm
 RUN jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding plain-credentials ssh-credentials ssh-agent configuration-as-code
-ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
+ENV JAVA_OPTS="-Xmx768m -Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 EOF
 docker build --progress=plain -t jenkins-lab /opt/jenkins-lab 2>&1 | tail -40; [ "${PIPESTATUS[0]}" = 0 ]
@@ -311,7 +311,7 @@ read -r sid sname sip <<<"$srv"
   || fail "The server '$sname' recorded in the Terraform state is not running (docker ps -a)."
 [ "$(docker inspect -f '{{.Image}}' "$sid")" = "$(docker image inspect -f '{{.Id}}' lab-server:1.0)" ] \
   || fail "The server '$sname' is not created from the lab-server:1.0 image."
-[ -n "$sip" ] && echo "$log" | grep -qF "$sip" \
+[ -n "$sip" ] && echo "$log" | grep -qwF "$sip" \
   || fail "Build #$num never addressed the server at its Terraform IP ($sip); the deploy must use the IP from terraform output."
 
 # The app on the server: started by docker compose from /home/ec2-user, from the image this build pushed.
