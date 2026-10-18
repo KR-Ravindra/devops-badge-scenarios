@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KC: sudo k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+      KC: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
     steps:
       - uses: actions/checkout@v4
       - name: setup.sh (as Killercoda runs it)
@@ -31,7 +31,9 @@ jobs:
           sudo bash tests/automate-k8s-ansible/solve.sh
           echo "solve took $(( $(date +%s) - start ))s"
       - name: check after solving must pass
-        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+        run: |
+          $KC -n my-app get deploy,svc nginx -o jsonpath='{range .items[*]}{.kind}{"\n"}{range .metadata.managedFields[*]}{.manager} {.operation} {.subresource}{"\n"}{end}{end}'
+          sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
       - name: resources at peak
         run: free -m; $KC top node || true; $KC -n my-app get all -o wide
       - name: grader catches a deleted Deployment
@@ -42,6 +44,7 @@ jobs:
         run: |
           $KC -n my-app apply -f /root/ansible-k8s/nginx-config.yaml
           $KC -n my-app rollout status deploy/nginx --timeout=120s
+          $KC -n my-app get deploy nginx -o jsonpath='{range .metadata.managedFields[*]}{.manager} {.operation} {.subresource}{"\n"}{end}'
           sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'NOT YET.*kubectl' /tmp/c3
       - name: grader catches a playbook that drifts from the cluster
         run: |

@@ -106,7 +106,7 @@ cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
 # by Ansible (not kubectl), and the committed playbook, run in --check mode from a
 # clean environment, uses kubernetes.core.k8s for the namespace, Deployment and
 # Service and reports no changes (idempotent and matches the live state).
-import json, os, re, subprocess, sys, tempfile, urllib.request
+import json, os, re, subprocess, sys, tempfile, time, urllib.request
 
 REPO = "/root/ansible-k8s"
 PB = "deploy-to-k8s.yaml"
@@ -139,7 +139,7 @@ svc = kget("-n", NS, "get", "svc", "nginx") or fail(f"No Service nginx in namesp
 
 def by_kubectl(obj):
     return sorted({m.get("manager", "") for m in obj["metadata"].get("managedFields") or []
-                   if m.get("manager", "").startswith("kubectl") and not m.get("subresource")})
+                   if m.get("manager", "").startswith(("kubectl", "k3s-")) and not m.get("subresource")})
 
 for kind, obj in (("Deployment", dep), ("Service", svc)):
     k = by_kubectl(obj)
@@ -153,10 +153,14 @@ if st.get("observedGeneration", 0) < dep["metadata"]["generation"] or (st.get("u
 
 ip = svc["spec"].get("clusterIP")
 port = (svc["spec"].get("ports") or [{}])[0].get("port", 80)
-try:
-    code = urllib.request.urlopen(f"http://{ip}:{port}/", timeout=10).status
-except Exception as e:
-    code = getattr(e, "code", None) or str(e)
+for _ in range(5):
+    try:
+        code = urllib.request.urlopen(f"http://{ip}:{port}/", timeout=10).status
+    except Exception as e:
+        code = getattr(e, "code", None) or str(e)
+    if code == 200:
+        break
+    time.sleep(2)
 code == 200 or fail(f"Service nginx ({ip}:{port}) does not answer HTTP 200 (got {code}).")
 
 # the playbook itself, in check mode from a clean environment
