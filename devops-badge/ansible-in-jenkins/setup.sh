@@ -192,7 +192,7 @@ J="curl -s --max-time 10 -u admin:admin http://localhost:8080"
 dip() { docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' "$1" 2>/dev/null; }
 
 $J/api/json >/dev/null 2>&1 || fail "Jenkins is not answering on :8080 (docker ps / docker logs jenkins)."
-last=$($J/job/java-maven-app/lastBuild/api/json 2>/dev/null)
+last=$($J/job/java-maven-app/lastBuild/api/json -f 2>/dev/null)
 [ -n "$last" ] || fail "The java-maven-app job has never run."
 read -r num result building ts dur < <(echo "$last" | python3 -c '
 import sys,json; b=json.load(sys.stdin)
@@ -200,7 +200,7 @@ print(b["number"], b["result"], str(b["building"]).lower(), b["timestamp"]//1000
 [ "$building" = false ] || fail "Build #$num is still running; wait for it to finish."
 [ "$result" = SUCCESS ] || fail "The latest java-maven-app build (#$num) is not green."
 log=$($J/job/java-maven-app/$num/consoleText 2>/dev/null)
-since=$((ts - 2)); until=$((ts + dur + 5))
+since=$((ts - 1)); until=$((ts + dur + 2))
 
 docker exec jenkins sh -c 'command -v ansible-playbook || command -v ansible' >/dev/null 2>&1 \
   && fail "Ansible is installed in the Jenkins container. Jenkins must hand the work to ansible-server, not run Ansible itself."
@@ -224,8 +224,13 @@ webs=$(docker ps --filter label=role=webserver --format '{{.Names}}' | sort)
 for h in $webs; do
   echo "$recap" | grep -Eq "^$h[[:space:]]+:.*unreachable=0[[:space:]]+failed=0" \
     || fail "Build #$num's PLAY RECAP has no clean (unreachable=0 failed=0) line for $h."
-  docker logs --since "$since" --until "$until" "$h" 2>&1 | grep -q "Accepted publickey for ec2-user from $aip " \
-    || fail "During build #$num, ansible-server did not connect to $h over SSH as ec2-user."
+  # Ansible's ControlPersist may reuse an SSH session from an earlier run, so
+  # require one SSH login ever and no docker exec/API connection during this build.
+  docker logs "$h" 2>&1 | grep -q "Accepted publickey for ec2-user from $aip " \
+    || fail "ansible-server has never connected to $h over SSH as ec2-user."
+  timeout 30 docker events --since "$since" --until "$until" --filter type=container --filter container="$h" \
+    --format '{{.Action}}' 2>/dev/null | grep -q '^exec_' \
+    && fail "During build #$num, $h was reached through docker exec / the Docker API, not over SSH."
   docker exec "$h" su - ec2-user -c 'docker --version' >/dev/null 2>&1 \
     || fail "On $h, 'docker --version' does not work for ec2-user."
   docker exec "$h" su - ec2-user -c 'docker compose version' >/dev/null 2>&1 \
