@@ -101,15 +101,15 @@ COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=mvn /usr/share/maven /usr/share/maven
 COPY --from=tf /bin/terraform /usr/local/bin/terraform
 ENV TF_PLUGIN_CACHE_DIR=/opt/tf-plugin-cache TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=1 TF_IN_AUTOMATION=1
-RUN ln -s /usr/share/maven/bin/mvn /usr/local/bin/mvn \\
- && mkdir -p /opt/tf-plugin-cache /tmp/tfwarm \\
+RUN ln -s /usr/share/maven/bin/mvn /usr/local/bin/mvn
+RUN mkdir -p /opt/tf-plugin-cache /tmp/tfwarm \\
  && printf 'terraform {\\n  required_providers {\\n    docker = { source = "kreuzwerker/docker", version = "$TF_DOCKER_PROVIDER" }\\n  }\\n}\\n' > /tmp/tfwarm/main.tf \\
- && cd /tmp/tfwarm && terraform init -backend=false -input=false && rm -rf /tmp/tfwarm \\
- && jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding plain-credentials ssh-credentials ssh-agent configuration-as-code
+ && cd /tmp/tfwarm && terraform init -backend=false -input=false && rm -rf /tmp/tfwarm
+RUN jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding plain-credentials ssh-credentials ssh-agent configuration-as-code
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 EOF
-docker build -q -t jenkins-lab /opt/jenkins-lab
+docker build --progress=plain -t jenkins-lab /opt/jenkins-lab 2>&1 | tail -40; [ "${PIPESTATUS[0]}" = 0 ]
 wait $SERVER_BUILD
 
 # --- SSH key pair for the server (like the EC2 key pair) ---
