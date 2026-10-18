@@ -1,0 +1,26 @@
+{
+  "title": "16 · Website Monitoring and Recovery",
+  "description": "Capstone: write a Python monitor for a website running in a Docker container on a cloud server. It emails an alert and restarts the container over SSH when the site fails, and reboots the server through the cloud provider's API when the server stops responding. The lab stands in for Linode and a mail provider.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Monitor the website and recover it automatically",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
