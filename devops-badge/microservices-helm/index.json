@@ -1,0 +1,26 @@
+{
+  "title": "12 · Deploy a Microservices App With Helm",
+  "description": "Capstone: take an 11-service shop from plain manifests to a production-ready Helm and helmfile deployment, then prove it works with a real checkout.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Ship Online Boutique with Helm",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}

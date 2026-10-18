@@ -1,17 +1,42 @@
 {
   "title": "DevOps Badge",
-  "description": "Hands-on DevOps assessment. Eleven scenarios across containers, Kubernetes, Helm, CI and artifact management, ending with a Jenkins-to-Kubernetes capstone — each a broken or empty environment you must fix. Auto-graded; a failed check still lets you move on.",
+  "description": "Hands-on DevOps assessment. Twelve scenarios across containers, Kubernetes, Helm, CI and artifact management, ending with two capstones (Jenkins-to-Kubernetes, microservices with Helm) — each a broken or empty environment you must fix. Auto-graded; a failed check still lets you move on.",
   "items": [
-    { "path": "debug-container-vm" },
-    { "path": "fix-crashloop" },
-    { "path": "service-endpoints-debug" },
-    { "path": "configmap-secret-wiring" },
-    { "path": "ingress-3-apps" },
-    { "path": "multi-env-helm" },
-    { "path": "private-registry" },
-    { "path": "dockerfile-multistage" },
-    { "path": "shared-pipeline-library" },
-    { "path": "ha-hardening" },
-    { "path": "jenkins-deploy-to-k8s" }
+    {
+      "path": "debug-container-vm"
+    },
+    {
+      "path": "fix-crashloop"
+    },
+    {
+      "path": "service-endpoints-debug"
+    },
+    {
+      "path": "configmap-secret-wiring"
+    },
+    {
+      "path": "ingress-3-apps"
+    },
+    {
+      "path": "multi-env-helm"
+    },
+    {
+      "path": "private-registry"
+    },
+    {
+      "path": "dockerfile-multistage"
+    },
+    {
+      "path": "shared-pipeline-library"
+    },
+    {
+      "path": "ha-hardening"
+    },
+    {
+      "path": "jenkins-deploy-to-k8s"
+    },
+    {
+      "path": "microservices-helm"
+    }
   ]
 }

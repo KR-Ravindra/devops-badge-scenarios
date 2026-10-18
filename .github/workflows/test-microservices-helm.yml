@@ -1,0 +1,30 @@
+name: test scenario 12 (microservices-helm)
+on:
+  workflow_dispatch:
+  push:
+    paths: ['devops-badge/microservices-helm/**', 'tests/microservices-helm/**', '.github/workflows/test-microservices-helm.yml']
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/microservices-helm/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
+      - name: reference solution
+        run: |
+          start=$(date +%s)
+          sudo bash tests/microservices-helm/solve.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: resources
+        if: always()
+        run: free -m; sudo docker stats --no-stream; sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n microservices get pods,svc -o wide || true

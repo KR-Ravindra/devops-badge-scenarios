@@ -1,6 +1,6 @@
 # DevOps Badge Scenarios (KillerCoda)
 
-Eleven hands-on assessment scenarios for the internal DevOps badge. Candidates
+Twelve hands-on assessment scenarios for the internal DevOps badge. Candidates
 **solve** a broken/empty environment instead of answering verbal questions. Each
 scenario auto-grades via `verify-*.sh`.
 
@@ -27,6 +27,7 @@ weak/solid/strong scoring guidance per scenario).
 | `configmap-secret-wiring` | — | ConfigMaps, Secrets, env injection | k8s 1-node | Low–Med |
 | `service-endpoints-debug` | — | Service selectors/endpoints debugging | k8s 1-node | Medium |
 | `jenkins-deploy-to-k8s` | Capstone 1 | Jenkins → Maven → image → registry → k8s (EKS/ECR stand-ins) | ubuntu + k3s | High |
+| `microservices-helm` | Capstone 4 | 11-service app → one reusable Helm chart + helmfile, probes/resources/replicas, real checkout | ubuntu + k3s | High |
 
 Design-only questions kept verbal (not simulated): **Q8** (multi-region AWS) and the
 cluster-level tier of **Q6**. **Q1/Q2** dropped as low-signal.
