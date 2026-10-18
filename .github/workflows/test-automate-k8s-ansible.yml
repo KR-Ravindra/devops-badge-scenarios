@@ -1,0 +1,61 @@
+name: test scenario 13 (automate-k8s-ansible)
+on:
+  workflow_dispatch:
+  push:
+    paths: ['devops-badge/automate-k8s-ansible/**', 'tests/automate-k8s-ansible/**', '.github/workflows/test-automate-k8s-ansible.yml']
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KC: sudo k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/automate-k8s-ansible/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
+      - name: the trap is real (playbook fails without the python kubernetes library)
+        run: |
+          cd /tmp && printf -- '- hosts: localhost\n  gather_facts: false\n  tasks:\n  - kubernetes.core.k8s_info: {kind: Namespace, kubeconfig: /root/kubeconfig_myapp-eks-cluster}\n' > trap.yml
+          sudo ansible-playbook trap.yml 2>&1 | tee /tmp/t0 || true
+          grep -q 'Failed to import the required Python library (kubernetes)' /tmp/t0
+      - name: reference solution
+        run: |
+          start=$(date +%s)
+          sudo bash tests/automate-k8s-ansible/solve.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: resources at peak
+        run: free -m; $KC top node || true; $KC -n my-app get all -o wide
+      - name: grader catches a deleted Deployment
+        run: |
+          $KC -n my-app delete deploy nginx --wait
+          sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'NOT YET.*No Deployment nginx' /tmp/c2
+      - name: grader catches a Deployment created with kubectl
+        run: |
+          $KC -n my-app apply -f /root/ansible-k8s/nginx-config.yaml
+          $KC -n my-app rollout status deploy/nginx --timeout=120s
+          sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'NOT YET.*kubectl' /tmp/c3
+      - name: grader catches a playbook that drifts from the cluster
+        run: |
+          $KC -n my-app delete deploy,svc nginx --wait
+          cd /root && sudo env -u KUBECONFIG ansible-playbook /root/ansible-k8s/deploy-to-k8s.yaml
+          sudo /usr/local/bin/check | tee /tmp/c4; grep -q 'PASS' /tmp/c4
+          $KC -n my-app scale deploy nginx --replicas=2
+          $KC -n my-app rollout status deploy/nginx --timeout=120s
+          sudo /usr/local/bin/check | tee /tmp/c5; grep -q 'NOT YET' /tmp/c5
+      - name: re-running the playbook restores the app
+        run: |
+          $KC -n my-app delete deploy nginx --wait
+          sudo env -u KUBECONFIG ansible-playbook /root/ansible-k8s/deploy-to-k8s.yaml
+          sudo /usr/local/bin/check | tee /tmp/c6; grep -q 'PASS' /tmp/c6
+      - name: debug
+        if: always()
+        run: free -m; sudo tail -40 /var/log/badge-setup.log; $KC get pods -A || true

@@ -1,0 +1,26 @@
+{
+  "title": "13 · Automate Kubernetes Deployment With Ansible",
+  "description": "Capstone: write an Ansible playbook that creates a namespace and deploys an application into a Kubernetes cluster with the kubernetes.core collection. The lab stands in for EKS.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Deploy to the cluster with an Ansible playbook",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
