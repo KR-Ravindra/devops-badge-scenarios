@@ -1,0 +1,45 @@
+name: test scenario 16 (website-monitoring)
+on:
+  workflow_dispatch:
+  push:
+    paths: ['devops-badge/website-monitoring/**', 'tests/website-monitoring/**', '.github/workflows/test-website-monitoring.yml']
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/website-monitoring/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
+      - name: grader catches a hardcoded API token
+        run: |
+          sudo bash -c '. /etc/badge-lab/secrets.env; mkdir -p /root/monitoring; echo "TOKEN = \"$LINODE_TOKEN\"" > /root/monitoring/monitor.py'
+          sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'literal LINODE_TOKEN' /tmp/c1
+      - name: reference solution
+        run: |
+          start=$(date +%s)
+          sudo bash tests/website-monitoring/solve.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: |
+          start=$(date +%s)
+          sudo /usr/local/bin/check | tee /tmp/c2
+          echo "check took $(( $(date +%s) - start ))s"
+          grep -q 'PASS' /tmp/c2
+      - name: resources
+        if: always()
+        run: free -m; sudo docker stats --no-stream; sudo docker ps -a; sudo journalctl -u website-monitor --no-pager | tail -40 || true
+      - name: grader catches requests.get without a timeout (monitor hangs on a frozen server)
+        run: |
+          sudo sed -i 's/requests.get(URL, timeout=5)/requests.get(URL)/' /root/monitoring/monitor.py
+          sudo systemctl restart website-monitor; sleep 3
+          sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'NOT YET: Stage 2' /tmp/c3
+      - name: check restored the lab after the failed stage
+        run: curl -sf -o /dev/null http://192.168.77.10:8080/ && sudo docker ps
