@@ -1,0 +1,26 @@
+{
+  "title": "15 · Ansible Integration in Jenkins",
+  "description": "Capstone: a Jenkins pipeline hands the Ansible files and server SSH key to a separate Ansible control node, prepares it, and runs a playbook there that finds the servers through a dynamic inventory and installs Docker and Docker Compose on them. The lab stands in for AWS EC2 and a cloud droplet.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Configure the servers from Jenkins with Ansible",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
