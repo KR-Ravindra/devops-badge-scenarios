@@ -25,6 +25,10 @@ jobs:
           echo "solve took $(( $(date +%s) - start ))s"
       - name: check after solving must pass
         run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: grader catches a floating image tag
+        run: |
+          sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n microservices set image deploy/redis-cart redis=redis:alpine
+          sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'not pinned' /tmp/c2
       - name: resources
         if: always()
         run: free -m; sudo docker stats --no-stream; sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n microservices get pods,svc -o wide || true
