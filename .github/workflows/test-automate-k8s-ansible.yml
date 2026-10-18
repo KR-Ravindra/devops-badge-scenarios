@@ -49,7 +49,7 @@ jobs:
       - name: grader catches a playbook that drifts from the cluster
         run: |
           $KC -n my-app delete deploy,svc nginx --wait
-          cd /root && sudo env -u KUBECONFIG ansible-playbook /root/ansible-k8s/deploy-to-k8s.yaml
+          sudo env -u KUBECONFIG ansible-playbook /root/ansible-k8s/deploy-to-k8s.yaml
           sudo /usr/local/bin/check | tee /tmp/c4; grep -q 'PASS' /tmp/c4
           $KC -n my-app scale deploy nginx --replicas=2
           $KC -n my-app rollout status deploy/nginx --timeout=120s
