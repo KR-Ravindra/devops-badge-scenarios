@@ -1,6 +1,6 @@
 # DevOps Badge Scenarios (KillerCoda)
 
-Twelve hands-on assessment scenarios for the internal DevOps badge. Candidates
+Sixteen hands-on assessment scenarios for the internal DevOps badge. Candidates
 **solve** a broken/empty environment instead of answering verbal questions. Each
 scenario auto-grades via `verify-*.sh`.
 
@@ -28,6 +28,10 @@ weak/solid/strong scoring guidance per scenario).
 | `service-endpoints-debug` | — | Service selectors/endpoints debugging | k8s 1-node | Medium |
 | `jenkins-deploy-to-k8s` | Capstone 1 | Jenkins → Maven → image → registry → k8s (EKS/ECR stand-ins) | ubuntu + k3s | High |
 | `microservices-helm` | Capstone 4 | 11-service app → one reusable Helm chart + helmfile, probes/resources/replicas, real checkout | ubuntu + k3s | High |
+| `automate-k8s-ansible` | Capstone 2 | Ansible playbook (kubernetes.core) creates namespace + deploys nginx into the cluster; idempotent, no kubectl | ubuntu + k3s + Ansible | High |
+| `terraform-cicd` | Capstone 3 | Jenkins → Maven → image → registry → terraform apply (S3 remote state) → sshagent/scp/ssh → docker-compose on the provisioned server (EC2/S3/Docker Hub stand-ins) | ubuntu + Docker (Jenkins, MinIO, registry, docker provider) | High |
+| `ansible-in-jenkins` | Capstone 5 | Jenkins → separate Ansible control node (sshagent/scp + ssh-steps), dynamic inventory, playbook installs Docker + Compose; scale-out re-run | ubuntu + Docker (Jenkins, control node, AL2023 "EC2" containers) | High |
+| `website-monitoring` | Capstone 6 | Python monitor: email alert + SSH container restart on app failure, cloud-API reboot + recovery on server hang (Linode/SMTP stand-ins) | ubuntu + docker | High |
 
 Design-only questions kept verbal (not simulated): **Q8** (multi-region AWS) and the
 cluster-level tier of **Q6**. **Q1/Q2** dropped as low-signal.

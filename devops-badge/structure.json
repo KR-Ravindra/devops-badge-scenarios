@@ -1,6 +1,6 @@
 {
   "title": "DevOps Badge",
-  "description": "Hands-on DevOps assessment. Twelve scenarios across containers, Kubernetes, Helm, CI and artifact management, ending with two capstones (Jenkins-to-Kubernetes, microservices with Helm) — each a broken or empty environment you must fix. Auto-graded; a failed check still lets you move on.",
+  "description": "Hands-on DevOps assessment. Sixteen scenarios across containers, Kubernetes, Helm, CI and artifact management, then all six bootcamp capstones (Jenkins to Kubernetes, microservices with Helm, Ansible to Kubernetes, CI/CD with Terraform, Ansible in Jenkins, Python monitoring) — each a broken or empty environment you must fix. Auto-graded; a failed check still lets you move on.",
   "items": [
     {
       "path": "debug-container-vm"
@@ -37,6 +37,18 @@
     },
     {
       "path": "microservices-helm"
+    },
+    {
+      "path": "automate-k8s-ansible"
+    },
+    {
+      "path": "terraform-cicd"
+    },
+    {
+      "path": "ansible-in-jenkins"
+    },
+    {
+      "path": "website-monitoring"
     }
   ]
 }
