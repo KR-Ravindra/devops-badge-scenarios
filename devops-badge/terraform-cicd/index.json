@@ -1,0 +1,26 @@
+{
+  "title": "14 · Complete CI/CD with Terraform",
+  "description": "Capstone: a Jenkins pipeline builds a Java app image, pushes it, provisions a server with Terraform (state in a remote S3 backend) and deploys the app to it over SSH with docker-compose. The lab stands in for EC2, S3 and Docker Hub.",
+  "details": {
+    "intro": {
+      "text": "intro.md",
+      "background": "setup.sh",
+      "foreground": "wait.sh"
+    },
+    "steps": [
+      {
+        "title": "Provision and deploy from Jenkins with Terraform",
+        "text": "step1.md"
+      }
+    ],
+    "finish": {
+      "text": "finish.md"
+    }
+  },
+  "backend": {
+    "imageid": "ubuntu"
+  },
+  "interface": {
+    "layout": "ide"
+  }
+}
