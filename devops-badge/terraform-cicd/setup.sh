@@ -465,7 +465,7 @@ docker exec jenkins test -r /root/.ssh/server-key.pub
 docker exec jenkins sh -c 'echo "$MAVEN_OPTS"' | grep -q Xmx512m
 docker exec -e MC_HOST_l=http://$S3_KEY:$S3_SECRET@localhost:9000 minio mc ls l/tf-state
 for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:9001/ && break; sleep 2; done
-curl -sf -o /dev/null http://localhost:9001/ || { curl -sv http://localhost:9001/ 2>&1 | tail -20; docker logs --tail 30 minio; false; }
+curl -sf -o /dev/null http://localhost:9001/ || { curl -sv http://localhost:9001/ 2>&1 | tail -20 || true; docker logs --tail 30 minio || true; false; }
 curl -sf http://localhost:5000/v2/ >/dev/null
 docker image inspect lab-server:1.0 >/dev/null
 check | grep -q 'NOT YET'
