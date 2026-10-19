@@ -2,7 +2,7 @@ name: test scenario 11 (jenkins-deploy-to-k8s)
 on:
   workflow_dispatch:
   push:
-    paths: ['devops-badge/jenkins-deploy-to-k8s/**', 'tests/jenkins-deploy-to-k8s/**', '.github/workflows/test-jenkins-deploy-to-k8s.yml']
+    paths: ['devops-badge/jenkins-deploy-to-k8s/**', 'tests/jenkins-deploy-to-k8s/**', '.github/workflows/test-jenkins-deploy-to-k8s.yml', 'tests/browser/**']
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -16,6 +16,11 @@ jobs:
           echo "setup took $(( $(date +%s) - start ))s"
           sudo tail -60 /var/log/badge-setup.log
           test -f /tmp/setup-done
+      - name: browser through a Killercoda-style proxy
+        run: |
+          pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
+          sudo bash tests/browser/proxy.sh 8080
+          python tests/browser/ui.py jenkins 8080 java-maven-app
       - name: check before solving must NOT pass
         run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
       - name: reference solution
