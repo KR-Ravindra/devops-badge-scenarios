@@ -348,14 +348,17 @@ docker --version
 for c in jenkins ansible-server ec2-1 ec2-2 ec2-db; do
   [ "$(docker inspect -f '{{.State.Running}}' $c)" = true ]
 done
-for i in $(seq 1 20); do
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
-    -i $LAB/keys/ansible-server-key root@"$(docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' ansible-server)" \
-    'python3 --version' && break
-  sleep 2
+chmod 600 $LAB/keys/ansible-server-key $LAB/keys/ec2-server-key
+SSHO="-o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5"
+aip=$(docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' ansible-server)
+for i in $(seq 1 20); do ssh $SSHO -i $LAB/keys/ansible-server-key root@$aip true && break; sleep 2; done
+ssh $SSHO -i $LAB/keys/ansible-server-key root@$aip 'python3 --version; ! command -v ansible'
+for h in ec2-1 ec2-2; do
+  ip=$(docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' $h)
+  for i in $(seq 1 20); do ssh $SSHO -i $LAB/keys/ec2-server-key ec2-user@$ip true && break; sleep 2; done
+  ssh $SSHO -i $LAB/keys/ec2-server-key ec2-user@$ip 'sudo -n true'
 done
-docker exec jenkins ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
-  -i /var/jenkins_home/keys/ec2-server-key ec2-user@ec2-1 'sudo -n true'
+docker exec jenkins getent hosts ansible-server
 curl -sf -o /dev/null http://localhost:8080/login
 curl -sf -o /dev/null -u admin:admin http://localhost:8080/crumbIssuer/api/json
 test -d /root/java-maven-app/.git
