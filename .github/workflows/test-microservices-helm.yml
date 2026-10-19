@@ -48,10 +48,7 @@ jobs:
             echo 0-1 | sudo tee /sys/fs/cgroup/kubepods/cpuset.cpus
           fi
           for d in /sys/fs/cgroup/system.slice/k3s.service /sys/fs/cgroup/kubepods.slice /sys/fs/cgroup/kubepods; do
-            [ -d $d ] && echo "$d: $(cat $d/cpuset.cpus.effective)"
-          done
-          for d in /sys/fs/cgroup/kubepods.slice /sys/fs/cgroup/kubepods; do
-            [ -d $d ] && test "$(cat $d/cpuset.cpus.effective)" = 0-1
+            if [ -d $d ]; then echo "$d: $(cat $d/cpuset.cpus.effective)"; test "$(cat $d/cpuset.cpus.effective)" = 0-1; fi
           done
       - name: check before solving must NOT pass
         run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
