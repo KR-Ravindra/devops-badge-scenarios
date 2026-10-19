@@ -6,20 +6,43 @@
 exec >>/var/log/badge-setup.log 2>&1
 set -x
 trap 'touch /tmp/setup-failed' ERR
-set -eE
+set -eE -o pipefail
 
 APP_REPO=https://gitlab.com/twn-devops-bootcamp/latest/15-ansible/java-maven-app.git
 APP_SHA=f7b73f6e990cb87d142297d21da1ed04ab4e0215   # branch feature/ansible
 JENKINS_IMAGE=jenkins/jenkins:2.568.3-lts-jdk21
 UBUNTU_IMAGE=ubuntu:noble-20260911
-AL_IMAGE=amazonlinux:2023.12.20260918.0
+AL_IMAGE=public.ecr.aws/amazonlinux/amazonlinux:2023.12.20260918.0
+DOCKER_VERSION=29.8.2
 JH=/var/lib/jenkins-lab
 LAB=/opt/ansible-lab
 
-# --- Docker ---
-if ! command -v docker >/dev/null; then curl -fsSL https://get.docker.com | sh; fi
-systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
+# --- Docker. Killercoda VMs share egress IPs, so Docker Hub pulls go through mirror.gcr.io ---
+if ! command -v docker >/dev/null; then
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sh /tmp/get-docker.sh --version $DOCKER_VERSION
+fi
+mkdir -p /etc/docker
+python3 - <<'PY'
+import json, os
+p = "/etc/docker/daemon.json"
+d = json.load(open(p)) if os.path.exists(p) and os.path.getsize(p) else {}
+m = d.setdefault("registry-mirrors", [])
+if "https://mirror.gcr.io" not in m:
+    m.append("https://mirror.gcr.io")
+json.dump(d, open(p, "w"), indent=2)
+PY
+systemctl restart docker 2>/dev/null || service docker restart
 for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+docker info | grep -A2 -i 'registry mirrors'
+
+pull() {  # pull with retries; fails setup if the image never arrives
+  for i in 1 2 3 4 5; do docker pull -q "$1" && return 0; sleep $((i * 5)); done
+  echo "could not pull $1"; return 1
+}
+pids=()
+for img in $JENKINS_IMAGE $UBUNTU_IMAGE $AL_IMAGE; do pull $img & pids+=($!); done
+for p in "${pids[@]}"; do wait $p; done
 
 docker rm -f jenkins ansible-server ec2-1 ec2-2 ec2-3 ec2-db 2>/dev/null || true
 docker network rm lab 2>/dev/null || true
@@ -58,23 +81,91 @@ RUN chown -R ec2-user:ec2-user /home/ec2-user/.ssh && chmod 700 /home/ec2-user/.
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 EOF
 
-# --- Jenkins image: LTS + pipeline + SSH plugins ---
+# --- Jenkins image: LTS + pipeline + SSH plugins (exact versions, with dependencies) ---
+cat > $LAB/jenkins/plugins.txt <<'EOF'
+antisamy-markup-formatter:173.v680e3a_b_69ff3
+apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
+asm-api:9.10.1-216.va_9256d3b_844b_
+bootstrap5-api:5.3.8-1048.va_c299057e35c
+bouncycastle-api:2.30.1.85.2-304.v4b_5b_62e59a_a_7
+branch-api:2.1303.v9f3b_95dc329d
+caffeine-api:3.2.4-208.v7e2da_a_7db_82b_
+cloudbees-folder:6.1106.v3a_d9a_6d2465e
+commons-lang3-api:3.20.0-109.ve43756e2d2b_4
+commons-text-api:1.15.0-218.va_61573470393
+configuration-as-code:2132.v60435f73c18a_
+credentials:1511.v2e3cb_0008ef0
+credentials-binding:728.v902a_273b_8947
+display-url-api:2.217.va_6b_de84cc74b_
+durable-task:686.v80ff80875b_82
+eddsa-api:0.3.0.1-29.v67e9a_1c969b_b_
+font-awesome-api:7.3.1-1013.v0835a_879ec6d
+git:5.10.1
+git-client:6.6.1
+gson-api:2.14.0-201.v8eefe5515533
+instance-identity:203.v15e81a_1b_7a_38
+ionicons-api:94.vcc3065403257
+jackson-annotations2-api:2.22-19.v10a_a_582ea_26e
+jackson2-api:2.22.2-445.vdc613f1d8012
+jakarta-activation-api:2.1.4-1
+jakarta-mail-api:2.1.5-1
+jakarta-xml-bind-api:4.0.9-19.v2b_a_5b_44d9a_1c
+javax-activation-api:1.2.0-8
+jaxb:2.3.9-143.v5979df3304e6
+joda-time-api:2.15.0-208.v6b_084e7a_d9f0
+jsch:0.2.16-95.v3eecb_55fa_b_78
+json-api:20260814-226.v20f9685d642c
+mailer:534.v1b_36f5864073
+mina-sshd-api-common:2.19.0-192.v2b_a_7b_2c1dc71
+mina-sshd-api-core:2.19.0-192.v2b_a_7b_2c1dc71
+pipeline-build-step:601.v6d4c6d1a_9dc7
+pipeline-groovy-lib:806.v408277b_33d1d
+pipeline-input-step:560.v56198a_642157
+pipeline-milestone-step:152.v6e22b_8cfc66c
+pipeline-model-api:2.2293.v6e7193cec599
+pipeline-model-definition:2.2293.v6e7193cec599
+pipeline-model-extensions:2.2293.v6e7193cec599
+pipeline-stage-step:345.va_96187909426
+pipeline-stage-tags-metadata:2.2293.v6e7193cec599
+plain-credentials:199.v9f8e1f741799
+plugin-util-api:7.1341.v039f146993d9
+prism-api:1.30.0-741.v034eb_0b_0a_a_fa_
+scm-api:728.vc30dcf7a_0df5
+script-security:1429.v0810f1b_530f5
+snakeyaml-api:2.5-149.v72471e9c6371
+ssh-agent:433.v9e73d67c3f74
+ssh-credentials:372.va_250881b_08cd
+ssh-steps:2.0.92.vb_a_0583935f9b_
+structs:362.va_b_695ef4fdf9
+trilead-api:2.284.v1974ea_324382
+variant:70.va_d9f17f859e0
+woodstox-core-api:7.2.2-10.vcb_629759b_2c2
+workflow-aggregator:608.v67378e9d3db_1
+workflow-api:1413.v2ff1a_5e720fa_
+workflow-basic-steps:1098.v808b_fd7f8cf4
+workflow-cps:4383.v04fa_a_3d67b_d9
+workflow-durable-task-step:1479.v56e587f413a_7
+workflow-job:1602.v2a_70b_80a_2396
+workflow-multibranch:842.v3a_b_59b_57b_e6e
+workflow-scm-step:487.v41313a_96b_65d
+workflow-step-api:724.v538c2362b_dfb_
+workflow-support:1015.v785e5a_b_b_8b_22
+EOF
 cat > $LAB/jenkins/Dockerfile <<EOF
 FROM $JENKINS_IMAGE
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/* \
- && jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding ssh-credentials ssh-agent ssh-steps configuration-as-code
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.security.csrf.DefaultCrumbIssuer.EXCLUDE_SESSION_ID=true -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 EOF
 
-docker build -q -t ansible-control-lab $LAB/control &
-p1=$!
-docker build -q -t ec2-lab $LAB/ec2 &
-p2=$!
-docker build -q -t jenkins-ansible-lab $LAB/jenkins &
-p3=$!
-wait $p1; wait $p2; wait $p3
+pids=()
+docker build -q -t ansible-control-lab $LAB/control & pids+=($!)
+docker build -q -t ec2-lab $LAB/ec2 & pids+=($!)
+docker build --progress=plain -t jenkins-ansible-lab $LAB/jenkins & pids+=($!)
+for p in "${pids[@]}"; do wait $p; done
 
 # --- Servers. Launching is a script so `check` can add a web server later. ---
 cat > /usr/local/bin/badge-launch-ec2 <<'EOF'
@@ -109,9 +200,7 @@ rm -rf $JH; mkdir -p $JH/jobs/java-maven-app $JH/keys
 cp $LAB/keys/ansible-server-key $LAB/keys/ec2-server-key $JH/keys/
 cat > $JH/casc.yaml <<'EOF'
 jenkins:
-  crumbIssuer:
-    standard:
-      excludeClientIPFromCrumb: true
+  crumbIssuer: "standard"
   numExecutors: 2
   securityRealm:
     local:
@@ -120,9 +209,6 @@ jenkins:
         - id: admin
           password: admin
   authorizationStrategy: loggedInUsersCanDoAnything
-unclassified:
-  location:
-    url: http://localhost:8080/
 credentials:
   system:
     domainCredentials:
@@ -168,10 +254,14 @@ cat > $JH/jobs/java-maven-app/config.xml <<'EOF'
 EOF
 
 # Jenkins sits on the lab network (reaches ansible-server by name) but has no
-# Docker socket: it can only reach the servers over SSH.
+# Docker socket: it can only reach the servers over SSH. /root is mounted (not the
+# repo dir itself) so the mount survives the candidate deleting/re-cloning the repo.
+if ss -ltnH 'sport = :8080' | grep -q .; then
+  echo "Port 8080 is already in use:"; ss -ltnp 'sport = :8080'; false
+fi
 docker run -d --restart=always --name jenkins --hostname jenkins --network lab -p 8080:8080 -u root \
   -v $JH:/var/jenkins_home \
-  -v /root/java-maven-app:/repos/java-maven-app:ro \
+  -v /root:/repos:ro \
   jenkins-ansible-lab
 for i in $(seq 1 90); do
   curl -sf -u admin:admin http://localhost:8080/job/java-maven-app/api/json >/dev/null 2>&1 && break; sleep 3
@@ -191,18 +281,20 @@ cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
 # docker group. Once ec2-1/ec2-2 are done, adds web server ec2-3 (scale-out) and
 # requires a re-run that picks it up without changes.
 fail() { echo "❌ NOT YET: $1"; exit 0; }
-J="curl -s --max-time 10 -u admin:admin http://localhost:8080"
+J="curl -sf --max-time 10 -u admin:admin http://localhost:8080"
 dip() { docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' "$1" 2>/dev/null; }
 
 $J/api/json >/dev/null 2>&1 || fail "Jenkins is not answering on :8080 (docker ps / docker logs jenkins)."
-last=$($J/job/java-maven-app/lastBuild/api/json -f 2>/dev/null)
+$J/job/java-maven-app/api/json >/dev/null 2>&1 || fail "The java-maven-app job is missing from Jenkins."
+last=$($J/job/java-maven-app/lastBuild/api/json 2>/dev/null)
 [ -n "$last" ] || fail "The java-maven-app job has never run."
 read -r num result building ts dur < <(echo "$last" | python3 -c '
 import sys,json; b=json.load(sys.stdin)
 print(b["number"], b["result"], str(b["building"]).lower(), b["timestamp"]//1000, b["duration"]//1000)')
 [ "$building" = false ] || fail "Build #$num is still running; wait for it to finish."
-[ "$result" = SUCCESS ] || fail "The latest java-maven-app build (#$num) is not green."
-log=$($J/job/java-maven-app/$num/consoleText 2>/dev/null)
+[ "$result" = SUCCESS ] || fail "The latest java-maven-app build (#$num) is not green ($result). Open its Console Output (build #$num in Jenkins) to see why."
+# Strip ANSI colour codes (AnsiColor / ANSIBLE_FORCE_COLOR) before reading the log.
+log=$($J/job/java-maven-app/$num/consoleText 2>/dev/null | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | tr -d '\r')
 since=$((ts - 1)); until=$((ts + dur + 2))
 
 docker exec jenkins sh -c 'command -v ansible-playbook || command -v ansible' >/dev/null 2>&1 \
@@ -217,7 +309,7 @@ echo "$log" | grep -q 'PLAY RECAP' || fail "Build #$num did not run an Ansible p
 
 recap=$(echo "$log" | sed -n '/PLAY RECAP/,$p')
 for h in ansible-server jenkins ec2-db; do
-  echo "$recap" | grep -Eq "^$h[[:space:]]+:" && fail "Build #$num ran the playbook against $h. Only the role=webserver servers should be in the inventory."
+  echo "$recap" | grep -Eq "(^|[[:space:]])$h[[:space:]]+:" && fail "Build #$num ran the playbook against $h. Only the role=webserver servers should be in the inventory."
 done
 docker exec ec2-db sh -c 'command -v docker' >/dev/null 2>&1 \
   && fail "Docker got installed on ec2-db (role=database). Only the web servers should be configured."
@@ -225,8 +317,8 @@ docker exec ec2-db sh -c 'command -v docker' >/dev/null 2>&1 \
 webs=$(docker ps --filter label=role=webserver --format '{{.Names}}' | sort)
 [ -n "$webs" ] || fail "No web server containers are running (docker ps)."
 for h in $webs; do
-  echo "$recap" | grep -Eq "^$h[[:space:]]+:.*unreachable=0[[:space:]]+failed=0" \
-    || fail "Build #$num's PLAY RECAP has no clean (unreachable=0 failed=0) line for $h."
+  echo "$recap" | grep -Eq "(^|[[:space:]])$h[[:space:]]+:.*unreachable=0[[:space:]]+failed=0" \
+    || fail "Build #$num's PLAY RECAP has no clean (unreachable=0 failed=0) line for $h. Open the Console Output of #$num."
   # Ansible's ControlPersist may reuse an SSH session from an earlier run, so
   # require one SSH login ever and no docker exec/API connection during this build.
   docker logs "$h" 2>&1 | grep -q "Accepted publickey for ec2-user from $aip " \
@@ -250,5 +342,35 @@ fi
 echo "✅ PASS: build #$num ran Ansible on ansible-server, which configured $(echo $webs | tr ' ' ',') over SSH with docker + compose + docker group."
 BADGE_CHECK_EOF
 chmod +x /usr/local/bin/check
+
+# --- self-test: what the candidate relies on ---
+docker --version
+for c in jenkins ansible-server ec2-1 ec2-2 ec2-db; do
+  [ "$(docker inspect -f '{{.State.Running}}' $c)" = true ]
+done
+chmod 600 $LAB/keys/ansible-server-key $LAB/keys/ec2-server-key
+SSHO="-o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5"
+aip=$(docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' ansible-server)
+for i in $(seq 1 20); do ssh $SSHO -i $LAB/keys/ansible-server-key root@$aip true && break; sleep 2; done
+ssh $SSHO -i $LAB/keys/ansible-server-key root@$aip 'python3 --version; ! command -v ansible'
+for h in ec2-1 ec2-2; do
+  ip=$(docker inspect -f '{{(index .NetworkSettings.Networks "lab").IPAddress}}' $h)
+  for i in $(seq 1 20); do ssh $SSHO -i $LAB/keys/ec2-server-key ec2-user@$ip true && break; sleep 2; done
+  ssh $SSHO -i $LAB/keys/ec2-server-key ec2-user@$ip 'sudo -n true'
+done
+docker exec jenkins getent hosts ansible-server
+curl -sf -o /dev/null http://localhost:8080/login
+curl -sf -o /dev/null -u admin:admin http://localhost:8080/crumbIssuer/api/json
+# every pinned plugin loaded (a broken dependency would hide steps like sshagent)
+curl -sfg -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version,active]' \
+  | python3 -c '
+import sys, json
+ps = {p["shortName"]: p for p in json.load(sys.stdin)["plugins"]}
+want = [l.split(":")[0] for l in open("/opt/ansible-lab/jenkins/plugins.txt") if l.strip()]
+bad = [n for n in want if not ps.get(n, {}).get("active")]
+print("plugins loaded:", len(ps), "not active:", bad)
+sys.exit(1 if bad else 0)'
+test -d /root/java-maven-app/.git
+check | grep -q 'NOT YET'
 
 touch /tmp/setup-done

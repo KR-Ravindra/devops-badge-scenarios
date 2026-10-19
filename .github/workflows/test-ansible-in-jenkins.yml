@@ -2,9 +2,62 @@ name: test scenario 15 (ansible-in-jenkins)
 on:
   workflow_dispatch:
   push:
-    paths: ['devops-badge/ansible-in-jenkins/**', 'tests/ansible-in-jenkins/**', '.github/workflows/test-ansible-in-jenkins.yml']
+    paths: ['devops-badge/ansible-in-jenkins/**', 'tests/ansible-in-jenkins/**', '.github/workflows/test-ansible-in-jenkins.yml', 'tests/browser/**']
 jobs:
-  e2e:
+  course:
+    name: setup, browser, course-faithful solution
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: start RAM sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/ansible-in-jenkins/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: wait.sh reports ready
+        run: timeout 30 bash devops-badge/ansible-in-jenkins/wait.sh | tee /tmp/w; grep -q 'Lab is ready' /tmp/w
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
+      - name: browser through a Killercoda-style proxy (login, Build Now, config Save)
+        run: |
+          pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
+          sudo bash tests/browser/proxy.sh 8080
+          python tests/browser/ui.py jenkins 8080 java-maven-app
+      - name: check after a failed build says to open its Console Output
+        run: sudo /usr/local/bin/check | tee /tmp/c0b; grep -q 'NOT YET.*Console Output' /tmp/c0b
+      - name: repo re-cloned by the candidate is still what Jenkins sees
+        run: |
+          sudo bash -c 'cd /root && mv java-maven-app jma.bak && git clone -q jma.bak java-maven-app && rm -rf jma.bak && cd java-maven-app && git remote remove origin'
+          sudo docker exec jenkins git -C /repos/java-maven-app log --oneline -1
+      - name: course-faithful solution
+        run: |
+          start=$(date +%s)
+          sudo bash tests/ansible-in-jenkins/solve-course.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check launches ec2-3 (scale-out) and must NOT pass yet
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'NOT YET.*ec2-3' /tmp/c1
+      - name: re-run the job unchanged
+        run: sudo bash tests/ansible-in-jenkins/solve-course.sh rerun
+      - name: check after re-run must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'PASS' /tmp/c2
+      - name: resources
+        if: always()
+        run: |
+          free -m; sudo docker stats --no-stream; sudo docker ps -a
+          for c in jenkins ansible-server ec2-1 ec2-3; do echo "== $c"; sudo docker logs --tail 15 $c 2>&1 || true; done
+          sudo docker logs jenkins 2>&1 | grep -iA8 "failed to load\|SEVERE" | head -80 || true
+      - name: peak RAM under 3500 MB
+        if: always()
+        run: |
+          peak=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${peak} MB"
+          [ "$peak" -le 3500 ]
+  reference:
+    name: setup, reference solution, negative tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -26,10 +79,7 @@ jobs:
       - name: check launches ec2-3 (scale-out) and must NOT pass yet
         run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'NOT YET.*ec2-3' /tmp/c1
       - name: re-run the job unchanged
-        run: |
-          start=$(date +%s)
-          sudo bash tests/ansible-in-jenkins/solve.sh rerun
-          echo "rerun took $(( $(date +%s) - start ))s"
+        run: sudo bash tests/ansible-in-jenkins/solve.sh rerun
       - name: check after re-run must pass
         run: sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'PASS' /tmp/c2
       - name: grader sees docker exec on a server (the non-SSH shortcut)
@@ -38,6 +88,4 @@ jobs:
           sudo timeout 30 docker events --since $((t-1)) --until $(($(date +%s)+1)) --filter type=container --filter container=ec2-1 --format '{{.Action}}' | grep '^exec_'
       - name: resources
         if: always()
-        run: |
-          free -m; sudo docker stats --no-stream; sudo docker ps -a
-          for c in jenkins ansible-server ec2-1 ec2-3; do echo "== $c"; sudo docker logs --tail 15 $c 2>&1 || true; done
+        run: free -m; sudo docker stats --no-stream; sudo docker ps -a
