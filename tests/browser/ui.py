@@ -1,10 +1,10 @@
 """Drives each lab's web UIs in a real browser through tests/browser/proxy.sh.
 
-Usage: ui.py jenkins PORT JOB | mailpit PORT | minio PORT USER PASS | page PORT TEXT
+Usage: ui.py jenkins PORT JOB | mailpit PORT | minio PORT USER PASS | page PORT TEXT | shop PORT
 Fails (exit 1) on anything a candidate would hit: CSRF rejections, redirects to
 localhost, a UI that never loads.
 """
-import sys, time
+import re, sys, time
 from playwright.sync_api import sync_playwright
 
 def base(port):
@@ -74,11 +74,28 @@ def text_page(page, port, text):
     assert text in page.content(), f"'{text}' not on {b}"
     print(f"page :{port} OK")
 
+def shop(page, port):
+    """Online Boutique: open a product, add it to the cart, place the order."""
+    b = base(port)
+    page.goto(b + "/")
+    stays_on(page, b)
+    page.locator("a[href*='/product/']").first.click()
+    page.wait_for_url("**/product/**")
+    page.get_by_role("button", name=re.compile("add to cart", re.I)).click()
+    page.wait_for_url("**/cart")
+    stays_on(page, b)
+    assert "/product/" not in page.url
+    page.get_by_role("button", name=re.compile("place order", re.I)).click()
+    page.wait_for_load_state("networkidle")
+    stays_on(page, b)
+    assert "order is complete" in page.content().lower(), "checkout did not complete: " + page.inner_text("body")[:400]
+    print(f"shop :{port} OK (product, add to cart, checkout)")
+
 if __name__ == "__main__":
     kind, *args = sys.argv[1:]
     with sync_playwright() as p:
         br = p.chromium.launch()
         page = br.new_context(ignore_https_errors=True).new_page()
         page.set_default_timeout(30000)
-        {"jenkins": jenkins, "mailpit": mailpit, "minio": minio, "page": text_page}[kind](page, *args)
+        {"jenkins": jenkins, "mailpit": mailpit, "minio": minio, "page": text_page, "shop": shop}[kind](page, *args)
         br.close()

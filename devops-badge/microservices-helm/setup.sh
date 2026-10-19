@@ -7,30 +7,58 @@ exec >>/var/log/badge-setup.log 2>&1
 set -x
 trap 'touch /tmp/setup-failed' ERR
 set -eE
+set -o pipefail
 
+K3S_VERSION=v1.36.5+k3s1
 HELM_VERSION=v3.22.0
 HELMFILE_VERSION=1.8.0
 HELM_DIFF_VERSION=v3.15.14
 APP_VERSION=v0.10.4
+REDIS_PINNED=redis:7.4-alpine
 IMG=us-central1-docker.pkg.dev/google-samples/microservices-demo
 SERVICES="currencyservice productcatalogservice checkoutservice shippingservice cartservice emailservice paymentservice frontend recommendationservice adservice"
 
-# --- k3s ---
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik --write-kubeconfig-mode 644" sh -
+retry() { local i; for i in 1 2 3 4 5; do "$@" && return 0; sleep $((i * 5)); done; echo "FAILED after 5 tries: $*"; return 1; }
+
+# --- ports: servicelb publishes the shop's LoadBalancer on host port 80 ---
+if ! systemctl is-active -q k3s; then
+  for p in 80 6443; do
+    if ss -ltnH "( sport = :$p )" | grep -q .; then
+      echo "Port $p is already in use, the lab needs it:"; ss -ltnp "( sport = :$p )"; exit 1
+    fi
+  done
+fi
+
+# --- k3s (Docker Hub through mirror.gcr.io: Killercoda VMs share egress IPs) ---
+mkdir -p /etc/rancher/k3s
+cat > /etc/rancher/k3s/registries.yaml <<'EOF'
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://mirror.gcr.io"
+EOF
+curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh
+INSTALL_K3S_VERSION=$K3S_VERSION INSTALL_K3S_EXEC="--disable traefik --write-kubeconfig-mode 644" sh /tmp/k3s-install.sh
+ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 for i in $(seq 1 60); do kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 3; done
+mkdir -p /root/.kube && cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
 grep -q KUBECONFIG /root/.bashrc || echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /root/.bashrc
 
-# --- helm, helm-diff, helmfile ---
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=$HELM_VERSION bash
-HOME=/root helm plugin install https://github.com/databus23/helm-diff --version $HELM_DIFF_VERSION || true
-curl -fsSL https://github.com/helmfile/helmfile/releases/download/v$HELMFILE_VERSION/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz \
-  | tar -xz -C /usr/local/bin helmfile
+# --- helm, helm-diff, helmfile (pinned release tarballs) ---
+curl -fsSL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz -o /tmp/helm.tgz
+tar -xzf /tmp/helm.tgz -C /usr/local/bin --strip-components=1 linux-amd64/helm
+export HOME=/root
+helm plugin list | grep -q '^diff' || retry helm plugin install https://github.com/databus23/helm-diff --version $HELM_DIFF_VERSION
+curl -fsSL https://github.com/helmfile/helmfile/releases/download/v$HELMFILE_VERSION/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz -o /tmp/helmfile.tgz
+tar -xzf /tmp/helmfile.tgz -C /usr/local/bin helmfile
 
-# --- pre-pull images so pods start fast (redis tag is the candidate's choice) ---
-for s in $SERVICES; do k3s ctr images pull "$IMG/$s:$APP_VERSION" >/dev/null & done
-k3s ctr images pull docker.io/library/redis:alpine >/dev/null &
-wait
+# --- pre-pull images so pods start fast (crictl honours the docker.io mirror) ---
+pids=()
+for ref in $(for s in $SERVICES; do echo "$IMG/$s:$APP_VERSION"; done) docker.io/library/redis:alpine docker.io/library/$REDIS_PINNED; do
+  retry k3s crictl pull "$ref" >/dev/null & pids+=($!)
+done
+for pid in "${pids[@]}"; do wait "$pid"; done
 
 # --- starter: plain manifests that work with kubectl apply, nothing more ---
 rm -rf /root/online-boutique
@@ -541,8 +569,9 @@ cd /
 cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
 #!/usr/bin/env python3
 # Pass when all 11 services run in `microservices` from Helm releases (one shared
-# chart for the app services, all listed in helmfile.yaml), every container
-# follows the production basics, and a real checkout goes through the storefront.
+# chart for the app services, all listed in helmfile.yaml[.gotmpl]), every container
+# follows the production basics, the shop answers on host port 80 and a real
+# checkout goes through the storefront.
 import json, os, re, subprocess, sys, http.cookiejar, urllib.parse, urllib.request
 
 os.environ["KUBECONFIG"] = "/etc/rancher/k3s/k3s.yaml"
@@ -578,13 +607,17 @@ for n in ALL:
 app_charts = {charts[release_of[n]] for n in APPS}
 len(app_charts) == 1 or fail(f"The 10 application services should share ONE reusable chart; they use: {', '.join(sorted(app_charts))}.")
 
-# helmfile: one file that declares every release
-os.path.isfile(f"{DIR}/helmfile.yaml") or fail(f"No {DIR}/helmfile.yaml.")
-rc, out = run("helmfile", "-f", "helmfile.yaml", "list", "--output", "json", cwd=DIR)
-rc == 0 or fail("helmfile list fails on your helmfile.yaml (run it in /root/online-boutique to see why).")
-declared = {r.get("name") for r in json.loads(out or "[]")}
+# helmfile: one file that declares every release (helmfile v1 reads helmfile.yaml or helmfile.yaml.gotmpl)
+HF = [f for f in ("helmfile.yaml", "helmfile.yaml.gotmpl") if os.path.isfile(f"{DIR}/{f}")]
+HF or fail(f"No {DIR}/helmfile.yaml (or helmfile.yaml.gotmpl).")
+rc, out = run("helmfile", "-f", HF[0], "list", "--output", "json", cwd=DIR)
+rc == 0 or fail(f"helmfile list fails on your {HF[0]} (run it in /root/online-boutique to see why).")
+try:
+    declared = {r.get("name") for r in json.loads(out or "[]")}
+except ValueError:
+    fail(f"helmfile list on {HF[0]} printed no release list.")
 undeclared = sorted({release_of[n] for n in ALL} - declared)
-undeclared and fail(f"Releases not declared in helmfile.yaml: {', '.join(undeclared)}.")
+undeclared and fail(f"Releases not declared in {HF[0]}: {', '.join(undeclared)}.")
 
 # production basics, per container
 for n in ALL:
@@ -636,8 +669,28 @@ code, body = get("/cart/checkout", {
 (code == 200 and "order is complete" in body.lower()) or fail(
     f"Checkout does not complete (HTTP {code}); checkout / payment / shipping / email / cart are involved.")
 
-print(f"✅ PASS: all 11 services run from Helm releases in {NS}, declared in helmfile.yaml, and a checkout completes.")
+# customers reach the shop from outside: a LoadBalancer Service on port 80 of this machine
+try:
+    r = urllib.request.urlopen("http://127.0.0.1:80/", timeout=20)
+    ext_code, ext_body = r.status, r.read().decode(errors="replace")
+except Exception as e:
+    ext_code, ext_body = getattr(e, "code", None), ""
+(ext_code == 200 and "Online Boutique" in ext_body) or fail(
+    f"The shop does not answer on port 80 of this machine (HTTP {ext_code}); customers need a LoadBalancer Service on port 80 "
+    f"(kubectl -n {NS} get svc).")
+
+print(f"✅ PASS: all 11 services run from Helm releases in {NS}, declared in {HF[0]}, the shop answers on port 80 and a checkout completes.")
 BADGE_CHECK_EOF
 chmod +x /usr/local/bin/check
+
+# --- self-test: what the candidate relies on ---
+helm version --short | grep -q "$HELM_VERSION"
+helm plugin list | grep -q '^diff'
+helmfile version | grep -q "$HELMFILE_VERSION"
+kubectl version
+kubectl get nodes | grep -q ' Ready'
+for s in $SERVICES; do k3s crictl inspecti "$IMG/$s:$APP_VERSION" >/dev/null; done
+k3s crictl inspecti docker.io/library/$REDIS_PINNED >/dev/null
+/usr/local/bin/check | grep -q 'NOT YET'
 
 touch /tmp/setup-done
