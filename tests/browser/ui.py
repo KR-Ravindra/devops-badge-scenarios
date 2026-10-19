@@ -38,10 +38,11 @@ def jenkins(page, port, job):
         time.sleep(1)
     # A form POST through the proxy (job config save) must also be accepted.
     page.goto(f"{b}/job/{job}/configure")
-    page.get_by_role("button", name="Save").click()
+    with page.expect_response(lambda r: "/configSubmit" in r.url) as resp:
+        page.get_by_role("button", name="Save").click()
+    assert resp.value.status < 400, f"config save rejected: HTTP {resp.value.status}"
     page.wait_for_load_state("networkidle")
     stays_on(page, b)
-    assert "crumb" not in page.content().lower(), "config save rejected (crumb)"
     print(f"jenkins :{port} OK (login, Build Now, config save)")
 
 def mailpit(page, port):
