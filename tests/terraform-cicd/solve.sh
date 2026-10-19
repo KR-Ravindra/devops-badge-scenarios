@@ -3,7 +3,7 @@
 set -euxo pipefail
 cd /root/java-maven-app
 
-# 1) Terraform: remote state in the S3 (MinIO) bucket; public key from the repo, not a laptop path.
+# 1) Terraform: remote state in the S3 (MinIO) bucket; the lab's public key, not a laptop path.
 cat > terraform/backend.tf <<'EOF'
 terraform {
   backend "s3" {
@@ -20,8 +20,7 @@ terraform {
   }
 }
 EOF
-cp /root/.ssh/server-key.pub terraform/server-key.pub
-echo 'public_key_location = "server-key.pub"' > terraform/terraform.tfvars
+echo 'public_key_location = "/root/.ssh/server-key.pub"' > terraform/terraform.tfvars
 
 # 2) server-cmds.sh: no Docker Hub login needed for the lab registry; IMAGE comes from $1.
 cat > server-cmds.sh <<'EOF'

@@ -2,13 +2,82 @@ name: test scenario 14 (terraform-cicd)
 on:
   workflow_dispatch:
   push:
-    paths: ['devops-badge/terraform-cicd/**', 'tests/terraform-cicd/**', '.github/workflows/test-terraform-cicd.yml']
+    paths: ['devops-badge/terraform-cicd/**', 'tests/terraform-cicd/**', '.github/workflows/test-terraform-cicd.yml', 'tests/browser/**']
 jobs:
-  e2e:
+  course:
+    name: course-style solution + browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: start RAM sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/terraform-cicd/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: wait.sh reports ready
+        run: timeout 30 bash devops-badge/terraform-cicd/wait.sh | tee /tmp/w; grep -q 'Lab is ready' /tmp/w
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0; grep -q 'never run' /tmp/c0
+      - name: browser through a Killercoda-style proxy (Jenkins, MinIO console)
+        run: |
+          pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
+          sudo bash tests/browser/proxy.sh 8081 9001 8080
+          python tests/browser/ui.py jenkins 8081 java-maven-app
+          python tests/browser/ui.py minio 9001 labadmin labsecret123 tf-state
+          # the API port must not bounce a browser to <host>:9001
+          code=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:9000/); echo "api: $code"
+          case "$code" in 3*) echo "MinIO API redirects browsers"; exit 1;; esac
+      - name: failed starter build must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0b; grep -q 'NOT YET' /tmp/c0b; grep -q 'not green' /tmp/c0b
+      - name: course-style solution
+        run: |
+          start=$(date +%s)
+          sudo bash tests/terraform-cicd/solve-course.sh
+          sudo bash tests/terraform-cicd/build.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: browser after solving (app, state in MinIO console)
+        run: |
+          python tests/browser/ui.py page 8080 'Welcome to Java Maven Application'
+          python tests/browser/ui.py minio 9001 labadmin labsecret123 tf-state myapp
+      - name: resources at peak
+        if: always()
+        run: free -m; sudo docker stats --no-stream; sudo docker ps -a
+      - name: app container removed -> NOT YET, rebuild recovers -> PASS
+        run: |
+          sudo docker ps -q --filter label=com.docker.compose.service=java-maven-app | xargs -r sudo docker rm -f
+          sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'NOT YET' /tmp/c2
+          sudo bash tests/terraform-cicd/build.sh
+          sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'PASS' /tmp/c3
+      - name: state lost -> rebuild hits the taken container name -> check names it
+        run: |
+          sudo docker exec -e MC_HOST_l=http://labadmin:labsecret123@localhost:9000 minio mc rm -r --force l/tf-state
+          sudo /usr/local/bin/check | tee /tmp/c4; grep -q 'No Terraform state' /tmp/c4; grep -q 'test-server' /tmp/c4
+          sudo bash tests/terraform-cicd/build.sh || true
+          sudo /usr/local/bin/check | tee /tmp/c5; grep -q 'already taken' /tmp/c5
+      - name: peak RAM under 3.5 GB
+        if: always()
+        run: |
+          max=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${max} MB"
+          [ "$max" -le 3500 ]
+      - name: logs on failure
+        if: failure()
+        run: sudo tail -150 /var/log/badge-setup.log; sudo docker logs --tail 80 jenkins || true; sudo curl -s -u admin:admin http://localhost:8081/job/java-maven-app/lastBuild/consoleText | tail -120 || true
+
+  reference:
+    name: reference solution
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: start RAM sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
       - name: setup.sh (as Killercoda runs it)
         run: |
           start=$(date +%s)
@@ -44,6 +113,11 @@ jobs:
         run: |
           sudo docker exec -e MC_HOST_l=http://labadmin:labsecret123@localhost:9000 minio mc rm -r --force l/tf-state
           sudo /usr/local/bin/check | tee /tmp/c4; grep -q 'NOT YET' /tmp/c4; grep -q 'No Terraform state' /tmp/c4
+      - name: peak RAM under 3.5 GB
+        if: always()
+        run: |
+          max=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${max} MB"
+          [ "$max" -le 3500 ]
       - name: logs on failure
         if: failure()
-        run: sudo tail -100 /var/log/badge-setup.log; sudo docker logs --tail 80 jenkins || true; sudo curl -s -u admin:admin http://localhost:8081/job/java-maven-app/lastBuild/consoleText | tail -80 || true
+        run: sudo tail -150 /var/log/badge-setup.log; sudo docker logs --tail 80 jenkins || true; sudo curl -s -u admin:admin http://localhost:8081/job/java-maven-app/lastBuild/consoleText | tail -120 || true
