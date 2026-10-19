@@ -7,6 +7,7 @@ exec >>/var/log/badge-setup.log 2>&1
 set -x
 trap 'touch /tmp/setup-failed' ERR
 set -eE
+set -o pipefail
 
 K3S_VERSION=v1.34.11+k3s1
 ANSIBLE_CORE_VERSION=2.19.13
@@ -20,13 +21,37 @@ REPO=/root/ansible-k8s
 
 export DEBIAN_FRONTEND=noninteractive
 
+# --- ports k3s needs (6443 API, 10250 kubelet, 80 ServiceLB for the app's
+# LoadBalancer Service) must be free unless k3s from an earlier run holds them ---
+if ! systemctl is-active -q k3s 2>/dev/null; then
+  for p in 6443 10250 80; do
+    if ss -ltnH "sport = :$p" | grep -q .; then
+      echo "PORT $p IS ALREADY IN USE: $(ss -ltnpH "sport = :$p")"; false
+    fi
+  done
+fi
+
 # --- k3s (EKS stand-in). No KUBECONFIG in the shell on purpose: the cluster's
-# kubeconfig is a separate file, like the one Terraform writes for EKS. ---
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik --write-kubeconfig-mode 644" sh -
+# kubeconfig is a separate file, like the one Terraform writes for EKS. Docker Hub
+# pulls go through mirror.gcr.io (Killercoda VMs share egress IPs and hit the
+# anonymous rate limit); containerd falls back to docker.io if the mirror misses. ---
+mkdir -p /etc/rancher/k3s
+cat > /etc/rancher/k3s/registries.yaml <<'REG'
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://mirror.gcr.io"
+REG
+curl -sfL --retry 5 https://get.k3s.io -o /tmp/k3s-install.sh
+INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik --write-kubeconfig-mode 644" sh /tmp/k3s-install.sh
+# the installer skips this symlink when the image already ships a kubectl
+ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
 for i in $(seq 1 60); do k3s kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 3; done
 cp /etc/rancher/k3s/k3s.yaml "$KCFG"
 chmod 600 "$KCFG"
-k3s ctr images pull "$NGINX_IMAGE" >/dev/null &
+pull() { for i in 1 2 3 4 5; do k3s crictl pull "$1" && return 0; sleep $((i * 5)); done; return 1; }
+pull "$NGINX_IMAGE" >/dev/null &
+PULL_PID=$!
 
 # --- Ansible: ansible-core in a venv + kubernetes.core, without the python
 # `kubernetes` client the collection imports (the course's first error) ---
@@ -48,7 +73,7 @@ mkdir -p "$REPO"
 # pin the floating `nginx` image of the course manifest to a pre-pulled version
 sed "s#image: nginx\$#image: nginx:${NGINX_IMAGE##*:}#" /tmp/course-src/nginx-config.yaml > "$REPO/nginx-config.yaml"
 grep -q "image: nginx:${NGINX_IMAGE##*:}" "$REPO/nginx-config.yaml"
-printf '[defaults]\nhost_key_checking = False\n' > "$REPO/ansible.cfg"
+printf '[defaults]\nhost_key_checking = False\ninterpreter_python = /opt/ansible/bin/python3\n' > "$REPO/ansible.cfg"
 rm -rf /tmp/course-src
 cd "$REPO"
 git init -q -b main
@@ -86,13 +111,14 @@ class CallbackModule(CallbackBase):
     def _rec(self, result, status):
         found = []
         objs(result._result, found)
-        self.rows.append({"action": result._task.action, "status": status,
+        self.rows.append({"action": result._task.action, "task": result._task.get_name(), "status": status,
                           "changed": bool(result._result.get("changed")), "objects": found,
                           "msg": str(result._result.get("msg", ""))[:400]})
 
     def v2_runner_on_ok(self, result): self._rec(result, "ok")
     def v2_runner_on_failed(self, result, ignore_errors=False): self._rec(result, "failed")
     def v2_runner_on_skipped(self, result): self._rec(result, "skipped")
+    def v2_runner_on_unreachable(self, result): self._rec(result, "failed")
 
     def v2_playbook_on_stats(self, stats):
         with open(os.environ["BADGE_AUDIT"], "w") as f:
@@ -104,8 +130,10 @@ cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
 #!/usr/bin/env python3
 # Pass when my-app/nginx runs and answers, was created through the Kubernetes API
 # by Ansible (not kubectl), and the committed playbook, run in --check mode from a
-# clean environment, uses kubernetes.core.k8s for the namespace, Deployment and
-# Service and reports no changes (idempotent and matches the live state).
+# clean environment, manages the namespace, Deployment and Service with
+# kubernetes.core.k8s and its Kubernetes tasks report no changes (idempotent and
+# matching the live state). Extra command/shell tasks are allowed; kubectl-made
+# objects are caught through managedFields.
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 
 REPO = "/root/ansible-k8s"
@@ -181,18 +209,31 @@ if rc != 0 or failed:
     msg = failed[0]["msg"] if failed and failed[0]["msg"] else (err.strip() or out.strip()).splitlines()[-1:]
     fail(f"`ansible-playbook {PB} --check --diff` fails when run from {REPO} in a fresh shell: {msg if isinstance(msg, str) else ' '.join(msg)}")
 
+if not rows:
+    fail(f"`ansible-playbook {PB}` ran no tasks: no hosts matched. Use `hosts: localhost`, "
+         f"or put your inventory in {REPO}/ansible.cfg (`inventory = ...`) so it is found without -i.")
+K8S_MOD = re.compile(r"^(kubernetes\.core\.|community\.kubernetes\.)?(k8s|helm)\w*$")
 touched = {(o["kind"], o["name"], o.get("namespace")) for r in rows if r["action"] in K8S_ACTIONS for o in r["objects"]}
 for kind, name, ns in (("Namespace", NS, None), ("Deployment", "nginx", NS), ("Service", "nginx", NS)):
     (kind, name, ns) in touched or fail(f"Your playbook does not manage {kind} {name}{' in ' + ns if ns else ''} with the kubernetes.core.k8s module.")
-SHELLISH = re.compile(r"^(ansible\.builtin\.|ansible\.legacy\.)?(command|shell|raw|script)$")
-skipped = [r["action"] for r in rows if r["status"] == "skipped" and SHELLISH.match(r["action"])]
-skipped and fail(f"Your playbook runs {', '.join(sorted(set(skipped)))} tasks, which cannot run in check mode; the deployment must be done with kubernetes.core modules.")
-changed = [r for r in rows if r["changed"]]
-changed and fail(f"Running the playbook again would change {len(changed)} task(s) (it is not idempotent or the cluster differs from it); see `ansible-playbook {PB} --check --diff`.")
+# idempotency is judged on the Kubernetes tasks; command/shell helpers (e.g. a
+# `kubectl rollout status`) always report changed and are not held against it
+changed = [r for r in rows if r["changed"] and K8S_MOD.match(r["action"])]
+changed and fail(f"Running the playbook again would change {len(changed)} Kubernetes task(s) ({', '.join(repr(r['task']) for r in changed)}): it is not idempotent or the cluster differs from it; see `ansible-playbook {PB} --check --diff`.")
 
 print(f"✅ PASS: the playbook creates namespace {NS} and deploys nginx with kubernetes.core, the app answers HTTP 200, and a re-run changes nothing.")
 BADGE_CHECK_EOF
 chmod +x /usr/local/bin/check
 
-wait
+wait "$PULL_PID"
+
+# --- self-test of what the candidate relies on ---
+ansible-playbook --version | grep -q 'python version.*/opt/ansible/bin/python3'
+ansible-galaxy collection list kubernetes.core -p /usr/share/ansible/collections | grep -q "$K8S_CORE_VERSION"
+if /opt/ansible/bin/python3 -c 'import kubernetes' 2>/dev/null; then echo 'kubernetes lib must not be preinstalled'; false; fi
+kubectl get nodes | grep -q ' Ready'
+k3s kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+k3s crictl images | grep -q "nginx.*${NGINX_IMAGE##*:}"
+git -C "$REPO" log --oneline | grep -q 'nginx manifest'
+check | grep -q 'NOT YET'
 touch /tmp/setup-done

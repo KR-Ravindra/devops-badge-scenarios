@@ -2,15 +2,17 @@ name: test scenario 13 (automate-k8s-ansible)
 on:
   workflow_dispatch:
   push:
-    paths: ['devops-badge/automate-k8s-ansible/**', 'tests/automate-k8s-ansible/**', '.github/workflows/test-automate-k8s-ansible.yml']
+    paths: ['devops-badge/automate-k8s-ansible/**', 'tests/automate-k8s-ansible/**', '.github/workflows/test-automate-k8s-ansible.yml', 'tests/browser/**']
+env:
+  KC: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
 jobs:
-  e2e:
+  course:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      KC: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
     steps:
       - uses: actions/checkout@v4
+      - name: start RAM sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
       - name: setup.sh (as Killercoda runs it)
         run: |
           start=$(date +%s)
@@ -25,6 +27,47 @@ jobs:
           cd /tmp && printf -- '- hosts: localhost\n  gather_facts: false\n  tasks:\n  - kubernetes.core.k8s_info: {kind: Namespace, kubeconfig: /root/kubeconfig_myapp-eks-cluster}\n' > trap.yml
           sudo ansible-playbook trap.yml 2>&1 | tee /tmp/t0 || true
           grep -q 'Failed to import the required Python library (kubernetes)' /tmp/t0
+      - name: browser proxy (the app UI only exists after solving)
+        run: |
+          pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
+          sudo bash tests/browser/proxy.sh 80
+      - name: course-faithful solution
+        run: |
+          start=$(date +%s)
+          sudo bash -l tests/automate-k8s-ansible/solve-course.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: deployed app in the browser (port 80 via ServiceLB)
+        run: |
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:80/ >/dev/null && break; sleep 2; done
+          python tests/browser/ui.py page 80 'Welcome to nginx'
+      - name: peak RAM
+        if: always()
+        run: |
+          free -m; $KC top node || true; $KC get pods -A || true
+          max=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${max} MB"
+          [ "$max" -le 3500 ]
+      - name: debug
+        if: failure()
+        run: sudo tail -60 /var/log/badge-setup.log
+
+  reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: start RAM sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/automate-k8s-ansible/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
       - name: reference solution
         run: |
           start=$(date +%s)
@@ -34,8 +77,22 @@ jobs:
         run: |
           $KC -n my-app get deploy,svc nginx -o jsonpath='{range .items[*]}{.kind}{"\n"}{range .metadata.managedFields[*]}{.manager} {.operation} {.subresource}{"\n"}{end}{end}'
           sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
-      - name: resources at peak
-        run: free -m; $KC top node || true; $KC -n my-app get all -o wide
+      - name: a harmless command task (kubectl rollout status) still passes
+        run: |
+          printf '    - name: Wait for rollout\n      ansible.builtin.command: kubectl --kubeconfig /root/kubeconfig_myapp-eks-cluster -n my-app rollout status deploy/nginx --timeout=60s\n' | sudo tee -a /root/ansible-k8s/deploy-to-k8s.yaml
+          sudo bash -c 'cd /root/ansible-k8s && git commit -qam "rollout status" && ansible-playbook deploy-to-k8s.yaml'
+          sudo /usr/local/bin/check | tee /tmp/r1; grep -q 'PASS' /tmp/r1
+          sudo git -C /root/ansible-k8s reset -q --hard HEAD~1
+      - name: a playbook whose hosts match nothing is explained
+        run: |
+          sudo bash -c 'cd /root/ansible-k8s && sed -i "s/hosts: localhost/hosts: k8s_control/" deploy-to-k8s.yaml && git commit -qam "group"'
+          sudo /usr/local/bin/check | tee /tmp/r2; grep -q 'NOT YET.*no hosts matched' /tmp/r2
+          sudo git -C /root/ansible-k8s reset -q --hard HEAD~1
+      - name: an explicit inventory with localhost ansible_connection=local passes
+        run: |
+          sudo bash -c 'cd /root/ansible-k8s && printf "[k8s_control]\nlocalhost ansible_connection=local\n" > hosts && echo "inventory = hosts" >> ansible.cfg && sed -i "s/hosts: localhost/hosts: k8s_control/" deploy-to-k8s.yaml && git add -A && git commit -qm "inventory"'
+          sudo /usr/local/bin/check | tee /tmp/r3; grep -q 'PASS' /tmp/r3
+          sudo git -C /root/ansible-k8s reset -q --hard HEAD~1
       - name: grader catches a deleted Deployment
         run: |
           $KC -n my-app delete deploy nginx --wait
@@ -44,7 +101,6 @@ jobs:
         run: |
           $KC -n my-app apply -f /root/ansible-k8s/nginx-config.yaml
           $KC -n my-app rollout status deploy/nginx --timeout=120s
-          $KC -n my-app get deploy nginx -o jsonpath='{range .metadata.managedFields[*]}{.manager} {.operation} {.subresource}{"\n"}{end}'
           sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'NOT YET.*kubectl' /tmp/c3
       - name: grader catches a playbook that drifts from the cluster
         run: |
@@ -59,6 +115,12 @@ jobs:
           $KC -n my-app delete deploy nginx --wait
           sudo env -u KUBECONFIG ansible-playbook /root/ansible-k8s/deploy-to-k8s.yaml
           sudo /usr/local/bin/check | tee /tmp/c6; grep -q 'PASS' /tmp/c6
-      - name: debug
+      - name: peak RAM
         if: always()
-        run: free -m; sudo tail -40 /var/log/badge-setup.log; $KC get pods -A || true
+        run: |
+          free -m
+          max=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${max} MB"
+          [ "$max" -le 3500 ]
+      - name: debug
+        if: failure()
+        run: sudo tail -60 /var/log/badge-setup.log; $KC get pods -A || true
