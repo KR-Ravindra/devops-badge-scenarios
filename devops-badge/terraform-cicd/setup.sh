@@ -106,7 +106,7 @@ RUN mkdir -p /opt/tf-plugin-cache /tmp/tfwarm \\
  && printf 'terraform {\\n  required_providers {\\n    docker = { source = "kreuzwerker/docker", version = "$TF_DOCKER_PROVIDER" }\\n  }\\n}\\n' > /tmp/tfwarm/main.tf \\
  && cd /tmp/tfwarm && terraform init -backend=false -input=false && rm -rf /tmp/tfwarm
 RUN jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding plain-credentials ssh-credentials ssh-agent configuration-as-code
-ENV JAVA_OPTS="-Xmx768m -Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
+ENV JAVA_OPTS="-Xmx768m -Djenkins.install.runSetupWizard=false -Dhudson.security.csrf.DefaultCrumbIssuer.EXCLUDE_SESSION_ID=true -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 EOF
 docker build --progress=plain -t jenkins-lab /opt/jenkins-lab 2>&1 | tail -40; [ "${PIPESTATUS[0]}" = 0 ]
@@ -178,6 +178,9 @@ cp /root/.ssh/server-key $JH/lab-secrets/server-key
 chmod 600 $JH/lab-secrets/server-key
 cat > $JH/casc.yaml <<EOF
 jenkins:
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: true
   numExecutors: 2
   securityRealm:
     local:

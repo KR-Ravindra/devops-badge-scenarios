@@ -64,7 +64,7 @@ FROM $JENKINS_IMAGE
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/* \
  && jenkins-plugin-cli --plugins workflow-aggregator git credentials-binding ssh-credentials ssh-agent ssh-steps configuration-as-code
-ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dhudson.security.csrf.DefaultCrumbIssuer.EXCLUDE_SESSION_ID=true -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
 ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc.yaml
 EOF
 
@@ -109,6 +109,9 @@ rm -rf $JH; mkdir -p $JH/jobs/java-maven-app $JH/keys
 cp $LAB/keys/ansible-server-key $LAB/keys/ec2-server-key $JH/keys/
 cat > $JH/casc.yaml <<'EOF'
 jenkins:
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: true
   numExecutors: 2
   securityRealm:
     local:
