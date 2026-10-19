@@ -5,12 +5,19 @@
 Write `/root/monitoring/monitor.py`. It checks `http://192.168.77.10:8080/` on a
 schedule, at least every 30 seconds, and:
 
-1. When the site answers with anything other than HTTP 200, it emails an alert to
-   `ops@lab.local` (sent from `alerts@lab.local`) and restarts the app container
-   `nginx-app` on the server over SSH from Python.
+1. When the site answers with anything other than HTTP 200 (the app container is
+   down but the server is fine), it emails an alert to `ops@lab.local` (sent from
+   `alerts@lab.local`) and restarts the app container `nginx-app` on the server over
+   SSH from Python. The server must not be rebooted for this.
 2. When the server doesn't respond at all, it emails an alert, reboots the server
    through the cloud provider API, waits until the server is running again, and then
-   restarts the app container on it.
+   restarts the app container on it (containers do not come back on their own after
+   a reboot).
+
+The server doesn't always fail cleanly. When it hangs, it still accepts TCP
+connections (HTTP and SSH) but never answers, and the cloud API keeps reporting it
+as `running`. The monitor has to treat that as "not responding", and it must never
+stay stuck waiting on a server that doesn't answer.
 
 Keep the credentials out of the code: the API token and the email password are read
 from environment variables.

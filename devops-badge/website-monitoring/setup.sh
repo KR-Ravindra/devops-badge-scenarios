@@ -1,7 +1,8 @@
 #!/bin/bash
 # Seeds: a "cloud server" container (sshd + nginx front on :8080 + docker CLI)
 # serving the app container nginx-app, a Linode-API-shaped mock on :8000 that can
-# reboot it, Mailpit as the SMTP server, pinned Python libs, and an empty
+# reboot it, Mailpit (behind a lenient SMTP gateway on :1025) as the SMTP
+# server, pinned Python libs, and an empty
 # /root/monitoring. The candidate writes and runs monitor.py. Installs `check`.
 # Course reference: gitlab.com/twn-devops-bootcamp/latest/14-automation-with-python/
 #   automation-projects @ fb3d2f537cb599e734ba6c24683b179bb8ae3840 (monitor-website.py,
@@ -9,7 +10,7 @@
 exec >>/var/log/badge-setup.log 2>&1
 set -x
 trap 'touch /tmp/setup-failed' ERR
-set -eE
+set -eE -o pipefail
 
 NGINX_IMG=nginx:1.30.4-alpine
 DEBIAN_IMG=debian:13.6-slim
@@ -20,18 +21,46 @@ NET=cloud-net SUBNET=192.168.77.0/24 SERVER_IP=192.168.77.10 APP_IP=192.168.77.2
 INSTANCE_ID=61420077
 LAB=/etc/badge-lab
 
-# --- Docker ---
-if ! command -v docker >/dev/null; then curl -fsSL https://get.docker.com | sh; fi
+# --- Docker (pinned installer; only used if the image ships without Docker) ---
+if ! command -v docker >/dev/null; then
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sh /tmp/get-docker.sh --version 28.5.1
+fi
+# Killercoda VMs share egress IPs and anonymous Docker Hub pulls are rate limited:
+# go through Google's Docker Hub mirror (dockerd falls back to Docker Hub itself).
+python3 - <<'PYEOF'
+import json, os
+p = "/etc/docker/daemon.json"
+d = {}
+if os.path.exists(p) and open(p).read().strip():
+    d = json.load(open(p))
+m = d.setdefault("registry-mirrors", [])
+if "https://mirror.gcr.io" not in m:
+    m.append("https://mirror.gcr.io")
+    os.makedirs("/etc/docker", exist_ok=True)
+    json.dump(d, open(p, "w"), indent=2)
+    open("/tmp/.docker-mirror-changed", "w").close()
+PYEOF
+if [ -f /tmp/.docker-mirror-changed ]; then
+  rm -f /tmp/.docker-mirror-changed
+  systemctl restart docker 2>/dev/null || service docker restart
+fi
 systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
 for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+docker info >/dev/null
 
-for img in $NGINX_IMG $DEBIAN_IMG $DOCKER_CLI_IMG $MAILPIT_IMG; do docker pull -q $img & done
+pull() {
+  for i in 1 2 3 4 5; do docker pull -q "$1" && return 0; sleep $((i * 5)); done
+  echo "ERROR: could not pull $1"; return 1
+}
+pids=""
+for img in $NGINX_IMG $DEBIAN_IMG $DOCKER_CLI_IMG $MAILPIT_IMG; do pull $img & pids="$pids $!"; done
 
 # --- Python libs (the ones the course uses) ---
-( python3 -m pip --version >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip; }
-  python3 -m pip install -q --break-system-packages --ignore-installed $PY_PKGS \
-    || python3 -m pip install -q --ignore-installed $PY_PKGS ) &
-wait
+python3 -m pip --version >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip; }
+python3 -m pip install -q --break-system-packages --ignore-installed $PY_PKGS \
+  || python3 -m pip install -q --ignore-installed $PY_PKGS
+for p in $pids; do wait $p; done
 
 # --- lab secrets (kept on re-run) ---
 mkdir -p $LAB && chmod 700 $LAB
@@ -85,13 +114,101 @@ docker build -q -t badge-web-server:1 $B
 
 # --- network, app, server, mail ---
 docker rm -f web-server nginx-app mailpit 2>/dev/null || true
+systemctl stop cloud-api mail-gateway 2>/dev/null || true
+for port in 1025 1026 8025 8000; do
+  if ss -ltnH "sport = :$port" | grep -q .; then
+    echo "ERROR: port $port is already in use on this machine:"; ss -ltnp "sport = :$port"; false
+  fi
+done
 docker network inspect $NET >/dev/null 2>&1 || docker network create --subnet $SUBNET $NET
 docker run -d --name nginx-app --network $NET --ip $APP_IP $NGINX_IMG
 docker run -d --name web-server --hostname web-server --network $NET --ip $SERVER_IP \
   -v /var/run/docker.sock:/var/run/docker.sock badge-web-server:1
-docker run -d --name mailpit --restart=always -p 127.0.0.1:1025:1025 -p 8025:8025 \
+docker run -d --name mailpit --restart=always -p 127.0.0.1:1026:1025 -p 8025:8025 \
   -e MP_SMTP_AUTH="alerts@lab.local:$EMAIL_PASSWORD" -e MP_SMTP_AUTH_ALLOW_INSECURE=true \
   -e MP_MAX_MESSAGES=500 $MAILPIT_IMG
+
+# --- SMTP gateway on :1025 in front of Mailpit (:1026) ---
+# Gmail and most real providers accept a message whose header block runs straight
+# into the body (the course sends "Subject: SITE DOWN\n<text>" with no blank
+# line); Mailpit's strict parser rejects it with 451. This transparent relay
+# inserts the missing blank line and passes everything else (AUTH included) through.
+mkdir -p /opt/badge-lab/mail-gateway
+cat > /opt/badge-lab/mail-gateway/gateway.py <<'GW_EOF'
+#!/usr/bin/env python3
+import re, socket, socketserver
+
+UPSTREAM = ("127.0.0.1", 1026)
+HEADER = re.compile(rb"^[!-9;-~]+:")
+
+def repair(lines):
+    for i, l in enumerate(lines):
+        s = l.rstrip(b"\r\n")
+        if s == b"":
+            return lines
+        if i and s[:1] in (b" ", b"\t"):
+            continue
+        if not HEADER.match(s):
+            return lines[:i] + [b"\r\n"] + lines[i:]
+    return lines
+
+class Relay(socketserver.StreamRequestHandler):
+    timeout = 300
+
+    def handle(self):
+        up = socket.create_connection(UPSTREAM, timeout=60)
+        uf = up.makefile("rb")
+        try:
+            def reply():
+                while True:
+                    l = uf.readline()
+                    if not l:
+                        raise ConnectionError("upstream closed")
+                    self.wfile.write(l)
+                    if l[3:4] != b"-":
+                        return l
+            reply()
+            while True:
+                line = self.rfile.readline()
+                if not line:
+                    return
+                up.sendall(line)
+                r = reply()
+                cmd = line[:4].upper()
+                if cmd == b"DATA" and r.startswith(b"354"):
+                    buf = []
+                    while True:
+                        l = self.rfile.readline()
+                        if not l:
+                            return
+                        if l.rstrip(b"\r\n") == b".":
+                            break
+                        buf.append(l)
+                    up.sendall(b"".join(repair(buf)) + b".\r\n")
+                    reply()
+                elif cmd == b"QUIT":
+                    return
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            up.close()
+
+class Server(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+Server(("127.0.0.1", 1025), Relay).serve_forever()
+GW_EOF
+cat > /etc/systemd/system/mail-gateway.service <<EOF
+[Unit]
+Description=SMTP gateway in front of Mailpit (lab stand-in)
+After=docker.service
+[Service]
+ExecStart=/usr/bin/python3 /opt/badge-lab/mail-gateway/gateway.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # --- cloud API stand-in (Linode API v4 shape) ---
 mkdir -p /opt/badge-lab/cloud-api /var/lib/cloud-api
@@ -194,8 +311,8 @@ WantedBy=multi-user.target
 EOF
 chmod 600 /etc/systemd/system/cloud-api.service
 systemctl daemon-reload
-systemctl enable cloud-api
-systemctl restart cloud-api
+systemctl enable cloud-api mail-gateway
+systemctl restart cloud-api mail-gateway
 
 # --- candidate's starting point ---
 mkdir -p /root/monitoring
@@ -210,12 +327,29 @@ chmod 600 /root/cloud-credentials.txt
 # --- wait until everything answers ---
 for i in $(seq 1 60); do
   curl -sf -o /dev/null http://$SERVER_IP:8080/ && curl -sf -o /dev/null http://localhost:8025/api/v1/info \
-    && curl -s -o /dev/null http://localhost:8000/ && break
+    && curl -s -o /dev/null http://localhost:8000/ && ss -ltnH 'sport = :1025' | grep -q . && break
   sleep 2
 done
+
+# --- self-test of everything the candidate relies on ---
 curl -sf -o /dev/null http://$SERVER_IP:8080/
-ssh -i /root/.ssh/cloud_server_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes root@$SERVER_IP true
-python3 -c "import requests, paramiko, schedule, linode_api4"
+curl -sf -o /dev/null http://localhost:8025/api/v1/info
+curl -sf -o /dev/null -H "Authorization: Bearer $LINODE_TOKEN" http://localhost:8000/v4/linode/instances/$INSTANCE_ID
+ssh -i /root/.ssh/cloud_server_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10 \
+  root@$SERVER_IP docker inspect -f '{{.State.Running}}' nginx-app | grep -q true
+EMAIL_PASSWORD=$EMAIL_PASSWORD LINODE_TOKEN=$LINODE_TOKEN INSTANCE_ID=$INSTANCE_ID python3 - <<'PYEOF'
+import os, smtplib, linode_api4, requests, paramiko, schedule
+# the course's header-less message must be accepted, as a real provider would
+with smtplib.SMTP("localhost", 1025, timeout=10) as s:
+    s.login("alerts@lab.local", os.environ["EMAIL_PASSWORD"])
+    s.sendmail("alerts@lab.local", "selftest@lab.local", "Subject: setup self-test\nbody without a blank line")
+m = requests.get("http://localhost:8025/api/v1/messages", timeout=5).json()["messages"]
+assert any(t["Address"] == "selftest@lab.local" for x in m for t in x["Bcc"] or []), m
+requests.delete("http://localhost:8025/api/v1/messages", timeout=5).raise_for_status()
+c = linode_api4.LinodeClient(os.environ["LINODE_TOKEN"], base_url="http://localhost:8000/v4")
+assert c.load(linode_api4.Instance, int(os.environ["INSTANCE_ID"])).status == "running"
+PYEOF
+docker --version; python3 --version
 
 # --- check ---
 cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
@@ -224,7 +358,7 @@ cat > /usr/local/bin/check <<'BADGE_CHECK_EOF'
 # container over SSH when the site returns an error, and (2) alerts, reboots the
 # server through the cloud API and brings the app back when the server hangs.
 # The grader breaks things for real and waits for the candidate's automation.
-import glob, json, os, subprocess, sys, time, urllib.request
+import glob, json, os, signal, subprocess, sys, time, urllib.request
 
 SERVER_IP, SITE = "192.168.77.10", "http://192.168.77.10:8080/"
 MAILPIT = "http://localhost:8025/api/v1/messages"
@@ -264,7 +398,10 @@ def alerts():
         d = json.load(urllib.request.urlopen(MAILPIT + "?limit=200", timeout=3))
     except Exception:
         return 0
-    return sum(1 for m in d.get("messages", []) if any(t.get("Address", "").lower() == ALERT_TO for t in m.get("To") or []))
+    # smtp.sendmail() without a To: header lists the envelope recipient under Bcc.
+    return sum(1 for m in d.get("messages", [])
+               if any(t.get("Address", "").lower() == ALERT_TO
+                      for k in ("To", "Cc", "Bcc") for t in m.get(k) or []))
 
 def clear_mail():
     urllib.request.urlopen(urllib.request.Request(MAILPIT, method="DELETE"), timeout=3)
@@ -281,8 +418,18 @@ def reboots():
     return ok, bad
 
 def app_starts():
+    # Count `docker start|restart` run on the server that name nginx-app or a
+    # (>=4 char) prefix of its container ID, as the course does.
+    cid = sh("docker", "inspect", "-f", "{{.Id}}", "nginx-app").stdout.strip()
     r = sh("docker", "exec", "web-server", "sh", "-c", "cat /var/log/docker-cmds.log 2>/dev/null")
-    return sum(1 for l in r.stdout.splitlines() if "nginx-app" in l and (" start" in l or " restart" in l))
+    n = 0
+    for l in r.stdout.splitlines():
+        args = l.split()[1:]
+        if not ({"start", "restart"} & set(args)):
+            continue
+        if any(a.lstrip("/") == "nginx-app" or (len(a) >= 4 and cid.startswith(a)) for a in args):
+            n += 1
+    return n
 
 def monitor_pids():
     pids = []
@@ -298,6 +445,14 @@ def monitor_pids():
 def healthy():
     return state("web-server") == "running" and state("nginx-app") == "running" and http_status() == 200
 
+def interrupted(signum, frame):
+    print("\nInterrupted: putting web-server and nginx-app back the way they were...", flush=True)
+    restore()
+    print("❌ NOT YET: check was interrupted before it finished."); sys.exit(0)
+
+for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    signal.signal(sig, interrupted)
+
 # --- static: the script exists and keeps secrets out of the code ---
 code = "/root/monitoring/monitor.py"
 os.path.isfile(code) or fail(f"{code} does not exist.")
@@ -308,55 +463,60 @@ for f in glob.glob("/root/monitoring/**/*.py", recursive=True):
             fail(f"{f} contains the literal {k}. Credentials must come from environment variables, not the code.")
 monitor_pids() or fail("No monitor.py process is running. Start it so it keeps running in the background, then run check again.")
 
-# --- baseline ---
-restore()
-for _ in range(20):
-    if healthy():
-        break
-    time.sleep(1)
-else:
-    fail(f"Lab baseline broken: {SITE} does not return 200 even after restoring the containers (docker ps -a).")
-time.sleep(3)
-
-# --- stage 1: the app container dies, the server is fine ---
-print("Stage 1/2: stopping the app container nginx-app on the server (the site returns an error)...", flush=True)
-clear_mail()
-r0, s0 = reboots()[0], app_starts()
-sh("docker", "stop", "-t", "1", "nginx-app")
-t = time.time()
-while time.time() - t < 75:
+try:
+    # --- baseline ---
+    restore()
+    for _ in range(20):
+        if healthy():
+            break
+        time.sleep(1)
+    else:
+        fail(f"Lab baseline broken: {SITE} does not return 200 even after restoring the containers (docker ps -a).")
     time.sleep(3)
-    if alerts() and healthy() and app_starts() > s0:
-        break
-monitor_pids() or fail("Stage 1 (app down): your monitor.py process exited. It has to keep running.")
-alerts() or fail(f"Stage 1 (app down): the site returned an error status but no alert email reached {ALERT_TO} within 75s.")
-state("nginx-app") == "running" or fail("Stage 1 (app down): an alert was sent but nginx-app was not started again within 75s.")
-app_starts() > s0 or fail("Stage 1 (app down): nginx-app came back, but not through a docker command run on the server (SSH into web-server).")
-http_status() == 200 or fail(f"Stage 1 (app down): nginx-app is running but {SITE} still doesn't return 200.")
-reboots()[0] == r0 or fail("Stage 1 (app down): only the app container was down and the server was healthy, but your monitor rebooted the whole server.")
-print(f"  ok: alert sent and app back after {int(time.time() - t)}s", flush=True)
-time.sleep(8)
 
-# --- stage 2: the server hangs (SSH and HTTP accept connections but never answer) ---
-print("Stage 2/2: freezing the server web-server (unreachable, the cloud API still says running)...", flush=True)
-clear_mail()
-(r0, b0), s0 = reboots(), app_starts()
-sh("docker", "pause", "web-server")
-t = time.time()
-while time.time() - t < 150:
-    time.sleep(3)
-    if alerts() and reboots()[0] > r0 and healthy() and app_starts() > s0:
-        break
-monitor_pids() or fail("Stage 2 (server down): your monitor.py process exited. It has to keep running.")
-alerts() or fail(f"Stage 2 (server down): the server stopped responding but no alert email reached {ALERT_TO} within 150s.")
-if reboots()[0] == r0:
-    if reboots()[1] > b0:
-        fail("Stage 2 (server down): your monitor called the reboot endpoint but the API rejected the token (401).")
-    fail("Stage 2 (server down): an alert was sent but the server was never rebooted through the cloud API.")
-state("web-server") == "running" or fail("Stage 2 (server down): the reboot was requested but web-server is not running again.")
-(state("nginx-app") == "running" and app_starts() > s0) or fail("Stage 2 (server down): the server rebooted but nginx-app was not started again on it (a reboot does not bring containers back).")
-http_status() == 200 or fail(f"Stage 2 (server down): server and app are up but {SITE} doesn't return 200.")
-print(f"  ok: alert sent, server rebooted and app back after {int(time.time() - t)}s", flush=True)
+    # --- stage 1: the app container dies, the server is fine ---
+    print("Stage 1/2: stopping the app container nginx-app on the server (the site returns an error)...", flush=True)
+    clear_mail()
+    r0, s0 = reboots()[0], app_starts()
+    sh("docker", "stop", "-t", "1", "nginx-app")
+    t = time.time()
+    while time.time() - t < 75:
+        time.sleep(3)
+        if alerts() and healthy() and app_starts() > s0:
+            break
+    monitor_pids() or fail("Stage 1 (app down): your monitor.py process exited. It has to keep running.")
+    alerts() or fail(f"Stage 1 (app down): the site returned an error status but no alert email reached {ALERT_TO} within 75s.")
+    state("nginx-app") == "running" or fail("Stage 1 (app down): an alert was sent but nginx-app was not started again within 75s.")
+    app_starts() > s0 or fail("Stage 1 (app down): nginx-app came back, but not through a docker command run on the server (SSH into web-server).")
+    http_status() == 200 or fail(f"Stage 1 (app down): nginx-app is running but {SITE} still doesn't return 200.")
+    reboots()[0] == r0 or fail("Stage 1 (app down): only the app container was down and the server was healthy, but your monitor rebooted the whole server.")
+    print(f"  ok: alert sent and app back after {int(time.time() - t)}s", flush=True)
+    time.sleep(8)
+
+    # --- stage 2: the server hangs (SSH and HTTP accept connections but never answer) ---
+    print("Stage 2/2: freezing the server web-server (unreachable, the cloud API still says running)...", flush=True)
+    clear_mail()
+    (r0, b0), s0 = reboots(), app_starts()
+    sh("docker", "pause", "web-server")
+    t = time.time()
+    while time.time() - t < 150:
+        time.sleep(3)
+        if alerts() and reboots()[0] > r0 and healthy() and app_starts() > s0:
+            break
+    monitor_pids() or fail("Stage 2 (server down): your monitor.py process exited. It has to keep running.")
+    alerts() or fail(f"Stage 2 (server down): the server stopped responding but no alert email reached {ALERT_TO} within 150s. "
+                     "A hung server accepts connections and never answers, so your monitor was most likely blocked on "
+                     "a network call (HTTP request, SSH connect/command) that has no timeout.")
+    if reboots()[0] == r0:
+        if reboots()[1] > b0:
+            fail("Stage 2 (server down): your monitor called the reboot endpoint but the API rejected the token (401).")
+        fail("Stage 2 (server down): an alert was sent but the server was never rebooted through the cloud API.")
+    state("web-server") == "running" or fail("Stage 2 (server down): the reboot was requested but web-server is not running again.")
+    (state("nginx-app") == "running" and app_starts() > s0) or fail("Stage 2 (server down): the server rebooted but nginx-app was not started again on it (a reboot does not bring containers back).")
+    http_status() == 200 or fail(f"Stage 2 (server down): server and app are up but {SITE} doesn't return 200.")
+    print(f"  ok: alert sent, server rebooted and app back after {int(time.time() - t)}s", flush=True)
+finally:
+    restore()
 print("✅ PASS: monitor.py alerts and restarts the app over SSH when the site fails, and reboots the server through the cloud API and recovers the app when the server hangs.")
 BADGE_CHECK_EOF
 chmod +x /usr/local/bin/check
