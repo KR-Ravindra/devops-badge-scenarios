@@ -164,7 +164,7 @@ EOF
 pids=()
 docker build -q -t ansible-control-lab $LAB/control & pids+=($!)
 docker build -q -t ec2-lab $LAB/ec2 & pids+=($!)
-docker build -q -t jenkins-ansible-lab $LAB/jenkins & pids+=($!)
+docker build --progress=plain -t jenkins-ansible-lab $LAB/jenkins & pids+=($!)
 for p in "${pids[@]}"; do wait $p; done
 
 # --- Servers. Launching is a script so `check` can add a web server later. ---
