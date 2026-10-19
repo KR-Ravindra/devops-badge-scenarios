@@ -1,6 +1,7 @@
 """Drives each lab's web UIs in a real browser through tests/browser/proxy.sh.
 
-Usage: ui.py jenkins PORT JOB | mailpit PORT | minio PORT USER PASS | page PORT TEXT
+Usage: ui.py jenkins PORT JOB | mailpit PORT | mailpit-msg PORT TEXT |
+       minio PORT USER PASS | page PORT TEXT
 Fails (exit 1) on anything a candidate would hit: CSRF rejections, redirects to
 localhost, a UI that never loads.
 """
@@ -57,6 +58,16 @@ def mailpit(page, port):
     assert page.request.get(b + "/api/v1/messages").ok
     print(f"mailpit :{port} OK (UI, websocket, API)")
 
+def mailpit_msg(page, port, text):
+    """Inbox UI shows a message containing TEXT (e.g. a subject); open it."""
+    mailpit(page, port)
+    item = page.get_by_text(text).first
+    item.wait_for(state="visible", timeout=30000)
+    item.click()
+    page.wait_for_load_state("networkidle")
+    stays_on(page, base(port))
+    print(f"mailpit :{port} OK (message '{text}' visible and opens)")
+
 def minio(page, port, user, pw):
     b = base(port)
     page.goto(b + "/")
@@ -80,5 +91,5 @@ if __name__ == "__main__":
         br = p.chromium.launch()
         page = br.new_context(ignore_https_errors=True).new_page()
         page.set_default_timeout(30000)
-        {"jenkins": jenkins, "mailpit": mailpit, "minio": minio, "page": text_page}[kind](page, *args)
+        {"jenkins": jenkins, "mailpit": mailpit, "mailpit-msg": mailpit_msg, "minio": minio, "page": text_page}[kind](page, *args)
         br.close()
