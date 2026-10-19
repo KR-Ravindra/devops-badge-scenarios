@@ -161,7 +161,7 @@ echo "externalService: true" >> values/frontend.yaml
   echo "- {name: redis-cart, namespace: microservices, createNamespace: true, chart: ./charts/redis}"
   for f in values/*.yaml; do n=$(basename $f .yaml)
     echo "- {name: $n, namespace: microservices, createNamespace: true, chart: ./charts/microservice, values: [$f]}"
-  done; } > helmfile.yaml
+  done; } > helmfile.yaml.gotmpl  # helmfile v1 templating name; check accepts it too
 
 kubectl create ns microservices --dry-run=client -o yaml | kubectl apply -f -
 helmfile sync

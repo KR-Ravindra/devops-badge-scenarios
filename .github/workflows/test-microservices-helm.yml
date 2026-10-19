@@ -2,33 +2,89 @@ name: test scenario 12 (microservices-helm)
 on:
   workflow_dispatch:
   push:
-    paths: ['devops-badge/microservices-helm/**', 'tests/microservices-helm/**', '.github/workflows/test-microservices-helm.yml']
+    paths: ['devops-badge/microservices-helm/**', 'tests/microservices-helm/**', '.github/workflows/test-microservices-helm.yml', 'tests/browser/**']
 jobs:
-  e2e:
+  images:
+    # Fact for the lab text: do the v0.10.4 images ship /bin/grpc_health_probe?
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    steps:
+      - name: look for grpc_health_probe in every image
+        run: |
+          IMG=us-central1-docker.pkg.dev/google-samples/microservices-demo
+          for s in currencyservice productcatalogservice checkoutservice shippingservice cartservice emailservice paymentservice frontend recommendationservice adservice; do
+            docker pull -q $IMG/$s:v0.10.4 >/dev/null
+            id=$(docker create $IMG/$s:v0.10.4)
+            if docker export $id | tar -t | grep -q 'grpc_health_probe'; then echo "$s: HAS grpc_health_probe"; else echo "$s: no grpc_health_probe"; fi
+            docker rm $id >/dev/null; docker rmi -f $IMG/$s:v0.10.4 >/dev/null
+          done | tee /tmp/probe
+  lab:
+    strategy:
+      fail-fast: false
+      matrix:
+        solution: [solve-course, solve]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: shape the runner like a Killercoda VM (2 vCPU / ~4 GB allocatable)
+        run: |
+          sudo mkdir -p /etc/rancher/k3s
+          printf 'kubelet-arg:\n  - "system-reserved=cpu=2,memory=12Gi"\n' | sudo tee /etc/rancher/k3s/config.yaml
+          (while :; do free -m | awk '/Mem:/{print $3}'; sleep 2; done > /tmp/mem) &
       - name: setup.sh (as Killercoda runs it)
         run: |
           start=$(date +%s)
           sudo bash devops-badge/microservices-helm/setup.sh || true
           echo "setup took $(( $(date +%s) - start ))s"
-          sudo tail -60 /var/log/badge-setup.log
-          test -f /tmp/setup-done
+          sudo tail -40 /var/log/badge-setup.log
+          test -f /tmp/setup-done && test ! -f /tmp/setup-failed
+          timeout 5 bash devops-badge/microservices-helm/wait.sh
+      - name: confine k3s and every pod to 2 CPUs
+        run: |
+          sudo systemctl set-property --runtime k3s.service AllowedCPUs=0-1
+          sudo systemctl set-property --runtime kubepods.slice AllowedCPUs=0-1 2>/dev/null || true
+          if [ -d /sys/fs/cgroup/kubepods ]; then
+            grep -q cpuset /sys/fs/cgroup/cgroup.subtree_control || echo +cpuset | sudo tee /sys/fs/cgroup/cgroup.subtree_control
+            echo 0-1 | sudo tee /sys/fs/cgroup/kubepods/cpuset.cpus
+          fi
+          for d in /sys/fs/cgroup/system.slice/k3s.service /sys/fs/cgroup/kubepods.slice /sys/fs/cgroup/kubepods; do
+            if [ -d $d ]; then echo "$d: $(cat $d/cpuset.cpus.effective)"; test "$(cat $d/cpuset.cpus.effective)" = 0-1; fi
+          done
       - name: check before solving must NOT pass
         run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
-      - name: reference solution
+      - name: browser proxy (Killercoda-style HTTPS)
+        run: |
+          pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
+          sudo bash tests/browser/proxy.sh 80
+      - name: ${{ matrix.solution }}
         run: |
           start=$(date +%s)
-          sudo bash tests/microservices-helm/solve.sh
+          sudo bash tests/microservices-helm/${{ matrix.solution }}.sh
           echo "solve took $(( $(date +%s) - start ))s"
-      - name: check after solving must pass
-        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+          for i in $(seq 1 60); do
+            sudo /usr/local/bin/check > /tmp/c1; grep -q PASS /tmp/c1 && break; sleep 10
+          done
+          echo "check passing $(( $(date +%s) - start ))s after the solve started"; cat /tmp/c1
+          sudo kubectl -n microservices get pods -o wide
+          grep -q 'PASS' /tmp/c1
+      - name: shop in the browser (storefront, add to cart, checkout)
+        run: |
+          python tests/browser/ui.py page 80 "Online Boutique"
+          python tests/browser/ui.py shop 80
       - name: grader catches a floating image tag
         run: |
-          sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n microservices set image deploy/redis-cart redis=redis:alpine
+          sudo kubectl -n microservices set image deploy/redis-cart '*=redis:alpine'
           sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'not pinned' /tmp/c2
-      - name: resources
+      - name: diagnostics
         if: always()
-        run: free -m; sudo docker stats --no-stream; sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n microservices get pods,svc -o wide || true
+        run: |
+          sudo kubectl -n microservices get pods -o custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,REASON:.status.containerStatuses[0].lastState.terminated.reason || true
+          sudo kubectl -n microservices get events --sort-by=.lastTimestamp | grep -iE 'unhealthy|kill|oom|backoff|failedscheduling' | tail -30 || true
+          sudo kubectl describe node | sed -n '/Allocated resources/,/Events/p' || true
+          sudo kubectl -n microservices get svc || true
+          sudo tail -30 /var/log/badge-setup.log || true
+      - name: peak RAM under 3.5 GB
+        if: always()
+        run: |
+          peak=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${peak} MB"
+          test "$peak" -le 3500
