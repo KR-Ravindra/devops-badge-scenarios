@@ -26,11 +26,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: shape the runner like a Killercoda VM (2 vCPU / ~4 GB allocatable, busy CPUs)
+      - name: shape the runner like a Killercoda VM (2 vCPU / ~4 GB allocatable)
         run: |
           sudo mkdir -p /etc/rancher/k3s
           printf 'kubelet-arg:\n  - "system-reserved=cpu=2,memory=12Gi"\n' | sudo tee /etc/rancher/k3s/config.yaml
-          sudo apt-get install -y -q stress-ng >/dev/null
           (while :; do free -m | awk '/Mem:/{print $3}'; sleep 2; done > /tmp/mem) &
       - name: setup.sh (as Killercoda runs it)
         run: |
@@ -40,15 +39,28 @@ jobs:
           sudo tail -40 /var/log/badge-setup.log
           test -f /tmp/setup-done && test ! -f /tmp/setup-failed
           timeout 5 bash devops-badge/microservices-helm/wait.sh
+      - name: confine k3s and every pod to 2 CPUs
+        run: |
+          sudo systemctl set-property --runtime k3s.service AllowedCPUs=0-1
+          sudo systemctl set-property --runtime kubepods.slice AllowedCPUs=0-1 2>/dev/null || true
+          if [ -d /sys/fs/cgroup/kubepods ]; then
+            grep -q cpuset /sys/fs/cgroup/cgroup.subtree_control || echo +cpuset | sudo tee /sys/fs/cgroup/cgroup.subtree_control
+            echo 0-1 | sudo tee /sys/fs/cgroup/kubepods/cpuset.cpus
+          fi
+          for d in /sys/fs/cgroup/system.slice/k3s.service /sys/fs/cgroup/kubepods.slice /sys/fs/cgroup/kubepods; do
+            [ -d $d ] && echo "$d: $(cat $d/cpuset.cpus.effective)"
+          done
+          for d in /sys/fs/cgroup/kubepods.slice /sys/fs/cgroup/kubepods; do
+            [ -d $d ] && test "$(cat $d/cpuset.cpus.effective)" = 0-1
+          done
       - name: check before solving must NOT pass
         run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
       - name: browser proxy (Killercoda-style HTTPS)
         run: |
           pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
           sudo bash tests/browser/proxy.sh 80
-      - name: ${{ matrix.solution }} on 2 busy cores
+      - name: ${{ matrix.solution }}
         run: |
-          stress-ng --cpu 2 --timeout 1500s >/dev/null 2>&1 &
           start=$(date +%s)
           sudo bash tests/microservices-helm/${{ matrix.solution }}.sh
           echo "solve took $(( $(date +%s) - start ))s"
