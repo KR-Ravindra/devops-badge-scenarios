@@ -85,10 +85,9 @@ EOF
 cat > $LAB/jenkins/plugins.txt <<'EOF'
 antisamy-markup-formatter:173.v680e3a_b_69ff3
 apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
-asm-api:9.10.1-216.va_9256d3b_844b_
-authentication-tokens:1.144.v5ff4a_5ec5c33
+asm-api:9.10-211.v7d13903b_a_d89
 bootstrap5-api:5.3.8-1048.va_c299057e35c
-bouncycastle-api:2.30.1.85.2-304.v4b_5b_62e59a_a_7
+bouncycastle-api:2.30.1.85-299.v15f4832d1275
 branch-api:2.1303.v9f3b_95dc329d
 caffeine-api:3.2.4-208.v7e2da_a_7db_82b_
 cloudbees-folder:6.1106.v3a_d9a_6d2465e
@@ -99,6 +98,7 @@ credentials:1511.v2e3cb_0008ef0
 credentials-binding:728.v902a_273b_8947
 display-url-api:2.217.va_6b_de84cc74b_
 durable-task:686.v80ff80875b_82
+eddsa-api:0.3.0-13.v7cb_69ed68f00
 font-awesome-api:7.3.1-1013.v0835a_879ec6d
 git:5.10.1
 git-client:6.6.1
@@ -113,14 +113,11 @@ jakarta-xml-bind-api:4.0.9-19.v2b_a_5b_44d9a_1c
 javax-activation-api:1.2.0-8
 jaxb:2.3.9-143.v5979df3304e6
 joda-time-api:2.15.0-208.v6b_084e7a_d9f0
+jsch:0.2.16-95.v3eecb_55fa_b_78
 json-api:20260814-226.v20f9685d642c
-kubernetes-cli:1.375.v8001982544ba
-kubernetes-client-api:7.3.1-256.v788a_0b_787114
-kubernetes-credentials:207.v492f58828b_ed
 mailer:534.v1b_36f5864073
 mina-sshd-api-common:2.19.0-192.v2b_a_7b_2c1dc71
 mina-sshd-api-core:2.19.0-192.v2b_a_7b_2c1dc71
-okhttp-api:5.3.2-200.vedb_720a_cf1f8
 pipeline-build-step:601.v6d4c6d1a_9dc7
 pipeline-groovy-lib:806.v408277b_33d1d
 pipeline-input-step:560.v56198a_642157
@@ -136,8 +133,11 @@ prism-api:1.30.0-741.v034eb_0b_0a_a_fa_
 scm-api:728.vc30dcf7a_0df5
 script-security:1429.v0810f1b_530f5
 snakeyaml-api:2.5-149.v72471e9c6371
+ssh-agent:433.v9e73d67c3f74
 ssh-credentials:372.va_250881b_08cd
+ssh-steps:2.0.92.vb_a_0583935f9b_
 structs:362.va_b_695ef4fdf9
+trilead-api:2.284.v1974ea_324382
 variant:70.va_d9f17f859e0
 woodstox-core-api:7.2.2-10.vcb_629759b_2c2
 workflow-aggregator:608.v67378e9d3db_1
