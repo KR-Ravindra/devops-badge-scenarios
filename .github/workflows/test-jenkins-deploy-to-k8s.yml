@@ -4,11 +4,14 @@ on:
   push:
     paths: ['devops-badge/jenkins-deploy-to-k8s/**', 'tests/jenkins-deploy-to-k8s/**', '.github/workflows/test-jenkins-deploy-to-k8s.yml', 'tests/browser/**']
 jobs:
-  e2e:
+  course:
+    name: course-faithful path (browser + solve-course)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: memory sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
       - name: setup.sh (as Killercoda runs it)
         run: |
           start=$(date +%s)
@@ -16,11 +19,53 @@ jobs:
           echo "setup took $(( $(date +%s) - start ))s"
           sudo tail -60 /var/log/badge-setup.log
           test -f /tmp/setup-done
+      - name: wait.sh finishes
+        run: timeout 30 bash devops-badge/jenkins-deploy-to-k8s/wait.sh | tail -3
+      - name: check before solving must NOT pass
+        run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
       - name: browser through a Killercoda-style proxy
         run: |
           pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium >/dev/null
           sudo bash tests/browser/proxy.sh 8080
           python tests/browser/ui.py jenkins 8080 java-maven-app
+      - name: course pipeline with the starter Dockerfile (pods crash-loop)
+        run: sudo bash tests/jenkins-deploy-to-k8s/solve-course.sh trap
+      - name: check must point at the crashing pods
+        run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'NOT YET.*not fully rolled out.*logs' /tmp/c1
+      - name: course solution (course Dockerfile fix)
+        run: |
+          start=$(date +%s)
+          sudo bash tests/jenkins-deploy-to-k8s/solve-course.sh
+          echo "solve took $(( $(date +%s) - start ))s"
+      - name: check after solving must pass
+        run: sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'PASS' /tmp/c2
+      - name: resources
+        if: always()
+        run: |
+          free -m; sudo docker stats --no-stream || true
+          sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n prod get all || true
+          sudo tail -40 /var/log/badge-setup.log || true
+      - name: peak RAM under 3.5 GB
+        if: always()
+        run: |
+          peak=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${peak} MB"
+          [ "$peak" -le 3500 ]
+
+  reference:
+    name: reference solution (solve.sh)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: memory sampler
+        run: nohup bash -c 'while :; do free -m | awk "/Mem:/{print \$3}"; sleep 2; done' > /tmp/mem 2>&1 &
+      - name: setup.sh (as Killercoda runs it)
+        run: |
+          start=$(date +%s)
+          sudo bash devops-badge/jenkins-deploy-to-k8s/setup.sh || true
+          echo "setup took $(( $(date +%s) - start ))s"
+          sudo tail -60 /var/log/badge-setup.log
+          test -f /tmp/setup-done
       - name: check before solving must NOT pass
         run: sudo /usr/local/bin/check | tee /tmp/c0; grep -q 'NOT YET' /tmp/c0
       - name: reference solution
@@ -30,6 +75,19 @@ jobs:
           echo "solve took $(( $(date +%s) - start ))s"
       - name: check after solving must pass
         run: sudo /usr/local/bin/check | tee /tmp/c1; grep -q 'PASS' /tmp/c1
+      - name: re-tagging the deployed tag with another image must fail the digest check
+        run: |
+          img=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n prod get deploy java-maven-app -o jsonpath='{.spec.template.spec.containers[0].image}')
+          printf 'FROM %s\nLABEL x=y\n' "$img" | sudo docker build -q -t "$img" -
+          sudo docker push -q "$img"
+          sudo /usr/local/bin/check | tee /tmp/c2; grep -q 'NOT YET' /tmp/c2
       - name: resources
         if: always()
-        run: free -m; sudo docker stats --no-stream; sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n prod get all || true
+        run: |
+          free -m; sudo docker stats --no-stream || true
+          sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n prod get all || true
+      - name: peak RAM under 3.5 GB
+        if: always()
+        run: |
+          peak=$(sort -n /tmp/mem | tail -1); echo "peak used RAM: ${peak} MB"
+          [ "$peak" -le 3500 ]

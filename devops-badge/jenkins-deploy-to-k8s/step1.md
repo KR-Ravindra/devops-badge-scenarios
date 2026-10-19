@@ -9,7 +9,8 @@ Make the `java-maven-app` job do all of this in one run, and get a green build:
    Every build must produce a **new, unique tag** (not `latest`).
 3. Deploy it to the cluster in namespace `prod`:
    - a Deployment named `java-maven-app` running the image the build just pushed,
-   - a Service named `java-maven-app` that serves the app on port `8080`.
+   - a Service named `java-maven-app` that serves the app on port `8080`
+     (the app's page at `/`).
 
 The app must actually be up and answering, not just deployed.
 
