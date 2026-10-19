@@ -42,7 +42,10 @@ jobs:
         run: python tests/browser/ui.py mailpit-msg 8025 'SITE DOWN'
       - name: Ctrl-C during check restores the lab
         run: |
-          sudo pkill -f 'monitor.py'
+          # swap the real monitor for one that never fixes anything, so check sits in stage 1
+          sudo pkill -f '[m]onitor.py'
+          sudo setsid nohup python3 -c 'import time; time.sleep(600)' /root/monitoring/monitor.py >/dev/null 2>&1 &
+          sleep 2
           sudo timeout -s INT 30 /usr/local/bin/check | tee /tmp/c3 || true
           grep -q 'Interrupted' /tmp/c3
           test "$(sudo docker inspect -f '{{.State.Status}}' nginx-app)" = running
