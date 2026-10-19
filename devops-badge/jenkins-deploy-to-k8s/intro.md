@@ -17,7 +17,8 @@ This lab has no AWS account, so it uses stand-ins for the AWS parts:
 
 A pipeline job called `java-maven-app` already exists in Jenkins and builds the
 `Jenkinsfile` from the `master` branch of that repo, so Jenkins only sees what
-you **commit**.
+you **commit**. The repo has no `Jenkinsfile` yet; writing it is your job, so
+until you commit one, **Build Now** fails with `Jenkinsfile not found`.
 
 Setup takes a few minutes. Wait for the terminal to say the lab is ready, then
 click **START**.
