@@ -292,8 +292,12 @@ ip=$(kubectl -n prod get svc java-maven-app -o jsonpath='{.spec.clusterIP}' 2>/d
 [ -n "$ip" ] || fail "No Service java-maven-app in namespace prod."
 kubectl -n prod get svc java-maven-app -o jsonpath='{.spec.ports[*].port}' | grep -qw 8080 \
   || fail "Service java-maven-app does not expose port 8080."
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://$ip:8080/)
-[ "$code" != 000 ] || fail "Service java-maven-app:8080 is not answering (no endpoints? kubectl -n prod get endpoints java-maven-app)."
+# Pods without a readiness probe are Ready before the app listens: give it a moment.
+for i in $(seq 1 15); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://$ip:8080/)
+  [ "$code" != 000 ] && break; sleep 2
+done
+[ "$code" != 000 ] || fail "Service java-maven-app:8080 is not answering (app still starting? no endpoints? kubectl -n prod get endpoints,pods; kubectl -n prod logs <pod>)."
 [ "$code" = 200 ] || fail "Service java-maven-app:8080 answers HTTP $code, not the app's page."
 
 echo "✅ PASS: build #$num pushed $REPO:$tag and prod is serving it on java-maven-app:8080."
