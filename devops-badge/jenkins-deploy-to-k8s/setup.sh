@@ -310,7 +310,7 @@ docker exec jenkins docker version
 docker exec jenkins git ls-remote file:///host-root/java-maven-app master | grep -q refs/heads/master
 curl -sf -u admin:admin http://localhost:8080/crumbIssuer/api/json >/dev/null
 curl -sf -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version]' \
-  | python3 -c 'import sys,json; print("\n".join(sorted(p["shortName"]+":"+p["version"] for p in json.load(sys.stdin)["plugins"])))' > /tmp/plugins-running.txt
+  | python3 -c 'import sys,json; print("\n".join(sorted(p["shortName"]+":"+p["version"] for p in json.load(sys.stdin)["plugins"])))' | sort > /tmp/plugins-running.txt
 diff <(sort /opt/jenkins-lab/plugins.txt) /tmp/plugins-running.txt
 out=$(/usr/local/bin/check); echo "$out"; grep -q 'NOT YET' <<<"$out"
 
