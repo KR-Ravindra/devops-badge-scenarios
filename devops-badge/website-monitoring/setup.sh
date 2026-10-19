@@ -1,7 +1,8 @@
 #!/bin/bash
 # Seeds: a "cloud server" container (sshd + nginx front on :8080 + docker CLI)
 # serving the app container nginx-app, a Linode-API-shaped mock on :8000 that can
-# reboot it, Mailpit as the SMTP server, pinned Python libs, and an empty
+# reboot it, Mailpit (behind a lenient SMTP gateway on :1025) as the SMTP
+# server, pinned Python libs, and an empty
 # /root/monitoring. The candidate writes and runs monitor.py. Installs `check`.
 # Course reference: gitlab.com/twn-devops-bootcamp/latest/14-automation-with-python/
 #   automation-projects @ fb3d2f537cb599e734ba6c24683b179bb8ae3840 (monitor-website.py,

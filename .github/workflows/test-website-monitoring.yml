@@ -98,6 +98,13 @@ jobs:
           sudo /usr/local/bin/check | tee /tmp/c3; grep -q 'NOT YET: Stage 2' /tmp/c3; grep -q 'no timeout' /tmp/c3
       - name: check restored the lab after the failed stage
         run: curl -sf -o /dev/null http://192.168.77.10:8080/ && sudo docker ps
+      - name: Ctrl-C in stage 2 (server paused) restores the lab
+        run: |
+          sudo timeout -s INT 60 /usr/local/bin/check | tee /tmp/c4 || true
+          grep -q 'Stage 2/2' /tmp/c4 && grep -q 'Interrupted' /tmp/c4
+          test "$(sudo docker inspect -f '{{.State.Status}}' web-server)" = running
+          test "$(sudo docker inspect -f '{{.State.Status}}' nginx-app)" = running
+          curl -sf -o /dev/null http://192.168.77.10:8080/
       - name: debug
         if: always()
         run: free -m; sudo docker stats --no-stream; sudo docker ps -a; sudo journalctl -u website-monitor --no-pager | tail -40 || true
