@@ -21,6 +21,8 @@ DOCKER_CLI_IMAGE=docker:27.5.1-cli
 TERRAFORM_IMAGE=hashicorp/terraform:1.16.3
 TF_DOCKER_PROVIDER=3.6.2
 MINIO_IMAGE=bitnamilegacy/minio:2025.7.23-debian-12-r5
+# This MinIO build has no web console; Bitnami ships MinIO's console separately.
+MINIO_CONSOLE_IMAGE=bitnamilegacy/minio-object-browser:2.0.2-debian-12-r4
 REGISTRY_IMAGE=registry:2.8.3
 UBUNTU_IMAGE=ubuntu:24.04
 # Used unpinned by the course's Dockerfile / docker-compose.yaml; pre-pulled so builds don't hit Docker Hub.
@@ -54,14 +56,14 @@ pull() {
   echo "PULL FAILED: $1"; return 1
 }
 pids=()
-for img in $JENKINS_IMAGE $MAVEN_IMAGE $DOCKER_CLI_IMAGE $TERRAFORM_IMAGE $MINIO_IMAGE $REGISTRY_IMAGE \
+for img in $JENKINS_IMAGE $MAVEN_IMAGE $DOCKER_CLI_IMAGE $TERRAFORM_IMAGE $MINIO_IMAGE $MINIO_CONSOLE_IMAGE $REGISTRY_IMAGE \
            $UBUNTU_IMAGE $APP_BASE_IMAGES; do
   pull "$img" & pids+=($!)
 done
 for p in "${pids[@]}"; do wait "$p"; done
 
 # --- Old lab leftovers, then make sure the ports the lab needs are free ---
-docker rm -f registry minio jenkins 2>/dev/null || true
+docker rm -f registry minio minio-console jenkins 2>/dev/null || true
 docker ps -aq --filter ancestor=lab-server:1.0 | xargs -r docker rm -f
 docker ps -aq --filter label=com.docker.compose.project | xargs -r docker rm -f
 for p in $PORTS; do
@@ -73,12 +75,13 @@ done
 # --- Registry (Docker Hub / ECR stand-in) ---
 docker run -d --restart=always --name registry -p 5000:5000 $REGISTRY_IMAGE
 
-# --- MinIO (S3 stand-in) with the state bucket. No API->console redirect: it would
-# point at <host>:9001, which doesn't exist behind the lab's web proxy. ---
-docker run -d --restart=always --name minio -p 9000:9000 -p 9001:9001 \
+# --- MinIO (S3 stand-in) with the state bucket, and its web console on :9001 ---
+docker run -d --restart=always --name minio -p 9000:9000 \
   -e MINIO_ROOT_USER=$S3_KEY -e MINIO_ROOT_PASSWORD=$S3_SECRET -e MINIO_DEFAULT_BUCKETS=tf-state \
-  -e MINIO_BROWSER_REDIRECT=off \
   $MINIO_IMAGE
+docker run -d --restart=always --name minio-console --network host \
+  -e CONSOLE_MINIO_SERVER=http://localhost:9000 \
+  $MINIO_CONSOLE_IMAGE server --port 9001
 
 # --- "EC2" server image: ubuntu + sshd + docker CLI + compose, user ec2-user ---
 mkdir -p /opt/lab-server
@@ -465,7 +468,7 @@ docker exec jenkins test -r /root/.ssh/server-key.pub
 docker exec jenkins sh -c 'echo "$MAVEN_OPTS"' | grep -q Xmx512m
 docker exec -e MC_HOST_l=http://$S3_KEY:$S3_SECRET@localhost:9000 minio mc ls l/tf-state
 for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:9001/ && break; sleep 2; done
-curl -sf -o /dev/null http://localhost:9001/ || { curl -sv http://localhost:9001/ 2>&1 | tail -20 || true; docker logs --tail 30 minio || true; false; }
+curl -sf -o /dev/null http://localhost:9001/ || { docker logs --tail 30 minio-console || true; false; }
 curl -sf http://localhost:5000/v2/ >/dev/null
 docker image inspect lab-server:1.0 >/dev/null
 check | grep -q 'NOT YET'

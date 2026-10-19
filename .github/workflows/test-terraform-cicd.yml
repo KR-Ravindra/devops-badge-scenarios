@@ -4,18 +4,6 @@ on:
   push:
     paths: ['devops-badge/terraform-cicd/**', 'tests/terraform-cicd/**', '.github/workflows/test-terraform-cicd.yml', 'tests/browser/**']
 jobs:
-  minio-debug:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          I=bitnamilegacy/minio:2025.7.23-debian-12-r5
-          docker run -d --name mna -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER=labadmin -e MINIO_ROOT_PASSWORD=labsecret123 -e MINIO_DEFAULT_BUCKETS=tf-state $I
-          docker run -d --name mnb -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=labadmin -e MINIO_ROOT_PASSWORD=labsecret123 -e MINIO_DEFAULT_BUCKETS=tf-state -e MINIO_BROWSER_REDIRECT=off $I
-          sleep 25
-          for p in 9000 9001 9100 9101; do echo "== $p"; curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://localhost:$p/ || true; done
-          docker logs mna 2>&1 | tail -40; echo ======; docker logs mnb 2>&1 | tail -40
-          docker exec mna ps aux || docker exec mna sh -c 'cat /proc/*/cmdline | tr "\\0" " "'
-          docker exec mna env | grep -i minio
   course:
     name: course-style solution + browser
     runs-on: ubuntu-latest
