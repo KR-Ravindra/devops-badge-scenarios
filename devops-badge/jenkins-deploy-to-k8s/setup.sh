@@ -278,7 +278,7 @@ digest=$(curl -sfI --max-time 5 \
   || fail "Build #$num did not push $REPO:$tag; prod is not running what the latest build produced."
 
 if ! kubectl -n prod rollout status deploy/java-maven-app --timeout=5s >/dev/null 2>&1; then
-  why=$(kubectl -n prod get pods -o jsonpath='{range .items[*]}{.status.containerStatuses[*].state.waiting.reason}{" "}{end}' 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')
+  why=$(kubectl -n prod get pods -o jsonpath='{range .items[*]}{.status.containerStatuses[*].state.waiting.reason}{" "}{.status.containerStatuses[*].state.terminated.reason}{" "}{end}' 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')
   fail "Deployment java-maven-app in prod is not fully rolled out${why:+ (pods: $why)}. Look at kubectl -n prod get pods and kubectl -n prod logs <pod>."
 fi
 ready=$(kubectl -n prod get deploy java-maven-app -o jsonpath='{.status.readyReplicas}')
@@ -309,6 +309,9 @@ docker exec jenkins mvn -v
 docker exec jenkins docker version
 docker exec jenkins git ls-remote file:///host-root/java-maven-app master | grep -q refs/heads/master
 curl -sf -u admin:admin http://localhost:8080/crumbIssuer/api/json >/dev/null
+curl -sf -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version]' \
+  | python3 -c 'import sys,json; print("\n".join(sorted(p["shortName"]+":"+p["version"] for p in json.load(sys.stdin)["plugins"])))' > /tmp/plugins-running.txt
+diff <(sort /opt/jenkins-lab/plugins.txt) /tmp/plugins-running.txt
 out=$(/usr/local/bin/check); echo "$out"; grep -q 'NOT YET' <<<"$out"
 
 touch /tmp/setup-done
