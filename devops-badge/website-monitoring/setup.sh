@@ -113,8 +113,8 @@ docker build -q -t badge-web-server:1 $B
 
 # --- network, app, server, mail ---
 docker rm -f web-server nginx-app mailpit 2>/dev/null || true
-systemctl stop cloud-api 2>/dev/null || true
-for port in 1025 8025 8000; do
+systemctl stop cloud-api mail-gateway 2>/dev/null || true
+for port in 1025 1026 8025 8000; do
   if ss -ltnH "sport = :$port" | grep -q .; then
     echo "ERROR: port $port is already in use on this machine:"; ss -ltnp "sport = :$port"; false
   fi
@@ -123,9 +123,91 @@ docker network inspect $NET >/dev/null 2>&1 || docker network create --subnet $S
 docker run -d --name nginx-app --network $NET --ip $APP_IP $NGINX_IMG
 docker run -d --name web-server --hostname web-server --network $NET --ip $SERVER_IP \
   -v /var/run/docker.sock:/var/run/docker.sock badge-web-server:1
-docker run -d --name mailpit --restart=always -p 127.0.0.1:1025:1025 -p 8025:8025 \
+docker run -d --name mailpit --restart=always -p 127.0.0.1:1026:1025 -p 8025:8025 \
   -e MP_SMTP_AUTH="alerts@lab.local:$EMAIL_PASSWORD" -e MP_SMTP_AUTH_ALLOW_INSECURE=true \
   -e MP_MAX_MESSAGES=500 $MAILPIT_IMG
+
+# --- SMTP gateway on :1025 in front of Mailpit (:1026) ---
+# Gmail and most real providers accept a message whose header block runs straight
+# into the body (the course sends "Subject: SITE DOWN\n<text>" with no blank
+# line); Mailpit's strict parser rejects it with 451. This transparent relay
+# inserts the missing blank line and passes everything else (AUTH included) through.
+mkdir -p /opt/badge-lab/mail-gateway
+cat > /opt/badge-lab/mail-gateway/gateway.py <<'GW_EOF'
+#!/usr/bin/env python3
+import re, socket, socketserver
+
+UPSTREAM = ("127.0.0.1", 1026)
+HEADER = re.compile(rb"^[!-9;-~]+:")
+
+def repair(lines):
+    for i, l in enumerate(lines):
+        s = l.rstrip(b"\r\n")
+        if s == b"":
+            return lines
+        if i and s[:1] in (b" ", b"\t"):
+            continue
+        if not HEADER.match(s):
+            return lines[:i] + [b"\r\n"] + lines[i:]
+    return lines
+
+class Relay(socketserver.StreamRequestHandler):
+    timeout = 300
+
+    def handle(self):
+        up = socket.create_connection(UPSTREAM, timeout=60)
+        uf = up.makefile("rb")
+        try:
+            def reply():
+                while True:
+                    l = uf.readline()
+                    if not l:
+                        raise ConnectionError("upstream closed")
+                    self.wfile.write(l)
+                    if l[3:4] != b"-":
+                        return l
+            reply()
+            while True:
+                line = self.rfile.readline()
+                if not line:
+                    return
+                up.sendall(line)
+                r = reply()
+                cmd = line[:4].upper()
+                if cmd == b"DATA" and r.startswith(b"354"):
+                    buf = []
+                    while True:
+                        l = self.rfile.readline()
+                        if not l:
+                            return
+                        if l.rstrip(b"\r\n") == b".":
+                            break
+                        buf.append(l)
+                    up.sendall(b"".join(repair(buf)) + b".\r\n")
+                    reply()
+                elif cmd == b"QUIT":
+                    return
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            up.close()
+
+class Server(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+Server(("127.0.0.1", 1025), Relay).serve_forever()
+GW_EOF
+cat > /etc/systemd/system/mail-gateway.service <<EOF
+[Unit]
+Description=SMTP gateway in front of Mailpit (lab stand-in)
+After=docker.service
+[Service]
+ExecStart=/usr/bin/python3 /opt/badge-lab/mail-gateway/gateway.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # --- cloud API stand-in (Linode API v4 shape) ---
 mkdir -p /opt/badge-lab/cloud-api /var/lib/cloud-api
@@ -228,8 +310,8 @@ WantedBy=multi-user.target
 EOF
 chmod 600 /etc/systemd/system/cloud-api.service
 systemctl daemon-reload
-systemctl enable cloud-api
-systemctl restart cloud-api
+systemctl enable cloud-api mail-gateway
+systemctl restart cloud-api mail-gateway
 
 # --- candidate's starting point ---
 mkdir -p /root/monitoring
@@ -244,7 +326,7 @@ chmod 600 /root/cloud-credentials.txt
 # --- wait until everything answers ---
 for i in $(seq 1 60); do
   curl -sf -o /dev/null http://$SERVER_IP:8080/ && curl -sf -o /dev/null http://localhost:8025/api/v1/info \
-    && curl -s -o /dev/null http://localhost:8000/ && break
+    && curl -s -o /dev/null http://localhost:8000/ && ss -ltnH 'sport = :1025' | grep -q . && break
   sleep 2
 done
 
@@ -256,8 +338,13 @@ ssh -i /root/.ssh/cloud_server_key -o StrictHostKeyChecking=accept-new -o BatchM
   root@$SERVER_IP docker inspect -f '{{.State.Running}}' nginx-app | grep -q true
 EMAIL_PASSWORD=$EMAIL_PASSWORD LINODE_TOKEN=$LINODE_TOKEN INSTANCE_ID=$INSTANCE_ID python3 - <<'PYEOF'
 import os, smtplib, linode_api4, requests, paramiko, schedule
+# the course's header-less message must be accepted, as a real provider would
 with smtplib.SMTP("localhost", 1025, timeout=10) as s:
     s.login("alerts@lab.local", os.environ["EMAIL_PASSWORD"])
+    s.sendmail("alerts@lab.local", "selftest@lab.local", "Subject: setup self-test\nbody without a blank line")
+m = requests.get("http://localhost:8025/api/v1/messages", timeout=5).json()["messages"]
+assert any(t["Address"] == "selftest@lab.local" for x in m for t in x["Bcc"] or []), m
+requests.delete("http://localhost:8025/api/v1/messages", timeout=5).raise_for_status()
 c = linode_api4.LinodeClient(os.environ["LINODE_TOKEN"], base_url="http://localhost:8000/v4")
 assert c.load(linode_api4.Instance, int(os.environ["INSTANCE_ID"])).status == "running"
 PYEOF
