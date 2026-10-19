@@ -362,7 +362,7 @@ docker exec jenkins getent hosts ansible-server
 curl -sf -o /dev/null http://localhost:8080/login
 curl -sf -o /dev/null -u admin:admin http://localhost:8080/crumbIssuer/api/json
 # every pinned plugin loaded (a broken dependency would hide steps like sshagent)
-curl -sf -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version,active]' \
+curl -sfg -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version,active]' \
   | python3 -c '
 import sys, json
 ps = {p["shortName"]: p for p in json.load(sys.stdin)["plugins"]}
