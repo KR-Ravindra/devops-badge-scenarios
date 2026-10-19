@@ -50,6 +50,7 @@ jobs:
         run: |
           free -m; sudo docker stats --no-stream; sudo docker ps -a
           for c in jenkins ansible-server ec2-1 ec2-3; do echo "== $c"; sudo docker logs --tail 15 $c 2>&1 || true; done
+          sudo docker logs jenkins 2>&1 | grep -iA8 "failed to load\|SEVERE" | head -80 || true
       - name: peak RAM under 3500 MB
         if: always()
         run: |

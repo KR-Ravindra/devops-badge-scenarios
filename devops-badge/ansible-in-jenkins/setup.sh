@@ -361,6 +361,15 @@ done
 docker exec jenkins getent hosts ansible-server
 curl -sf -o /dev/null http://localhost:8080/login
 curl -sf -o /dev/null -u admin:admin http://localhost:8080/crumbIssuer/api/json
+# every pinned plugin loaded (a broken dependency would hide steps like sshagent)
+curl -sf -u admin:admin 'http://localhost:8080/pluginManager/api/json?depth=1&tree=plugins[shortName,version,active]' \
+  | python3 -c '
+import sys, json
+ps = {p["shortName"]: p for p in json.load(sys.stdin)["plugins"]}
+want = [l.split(":")[0] for l in open("/opt/ansible-lab/jenkins/plugins.txt") if l.strip()]
+bad = [n for n in want if not ps.get(n, {}).get("active")]
+print("plugins loaded:", len(ps), "not active:", bad)
+sys.exit(1 if bad else 0)'
 test -d /root/java-maven-app/.git
 check | grep -q 'NOT YET'
 
