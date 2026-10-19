@@ -1,6 +1,8 @@
 # Provision and deploy from Jenkins with Terraform
 
-[Open Jenkins]({{TRAFFIC_HOST1_8081}}) (user `admin`, password `admin`).
+[Open Jenkins]({{TRAFFIC_HOST1_8081}}) (user `admin`, password `admin`) ·
+[MinIO console]({{TRAFFIC_HOST1_9001}}) (`labadmin` / `labsecret123`) ·
+[the app on port 8080]({{TRAFFIC_HOST1_8080}}) (answers once deployed)
 
 Make the `java-maven-app` job do all of this in one run, and get a green build:
 
@@ -10,11 +12,12 @@ Make the `java-maven-app` job do all of this in one run, and get a green build:
 3. Provision the server with `terraform apply` from the `terraform/` folder.
    The Terraform state must be stored remotely in the S3 bucket `tf-state`, not on
    the Jenkins machine.
-4. Deploy to that server: copy the deployment files to it over SSH and start the
-   app there with `docker-compose`, running the image the build just pushed. The
-   pipeline must get the server's address from Terraform, not from a hardcoded value.
+4. Deploy to that server: copy the deployment files over SSH into `/home/ec2-user`
+   on the server and start the app from there with `docker-compose`, running the
+   image the build just pushed. The pipeline must get the server's address from
+   Terraform, not from a hardcoded value.
 
-The app must actually be up and answering on port `8080`, not just started.
+The app must actually be up and answering HTTP 200 on port `8080`, not just started.
 
 Done when the latest Jenkins build is green, the Terraform state in `tf-state`
 holds the server, and the server runs the image that build pushed. Then run `check`.

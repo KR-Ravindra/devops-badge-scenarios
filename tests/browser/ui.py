@@ -1,6 +1,6 @@
 """Drives each lab's web UIs in a real browser through tests/browser/proxy.sh.
 
-Usage: ui.py jenkins PORT JOB | mailpit PORT | minio PORT USER PASS | page PORT TEXT
+Usage: ui.py jenkins PORT JOB | mailpit PORT | minio PORT USER PASS [BUCKET [TEXT]] | page PORT TEXT
 Fails (exit 1) on anything a candidate would hit: CSRF rejections, redirects to
 localhost, a UI that never loads.
 """
@@ -57,7 +57,7 @@ def mailpit(page, port):
     assert page.request.get(b + "/api/v1/messages").ok
     print(f"mailpit :{port} OK (UI, websocket, API)")
 
-def minio(page, port, user, pw):
+def minio(page, port, user, pw, bucket=None, text=None):
     b = base(port)
     page.goto(b + "/")
     page.fill("#accessKey", user)
@@ -65,7 +65,12 @@ def minio(page, port, user, pw):
     page.keyboard.press("Enter")
     page.wait_for_url(lambda u: "/login" not in u, timeout=30000)
     stays_on(page, b)
-    print(f"minio console :{port} OK (login)")
+    if bucket:  # browse a bucket; optionally wait for an object/prefix name to be listed
+        page.goto(f"{b}/browser/{bucket}")
+        if text:
+            page.get_by_text(text).first.wait_for(timeout=30000)
+        stays_on(page, b)
+    print(f"minio console :{port} OK (login{', browse ' + bucket if bucket else ''})")
 
 def text_page(page, port, text):
     b = base(port)
