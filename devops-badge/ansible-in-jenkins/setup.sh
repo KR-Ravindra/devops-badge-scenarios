@@ -85,9 +85,9 @@ EOF
 cat > $LAB/jenkins/plugins.txt <<'EOF'
 antisamy-markup-formatter:173.v680e3a_b_69ff3
 apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
-asm-api:9.10-211.v7d13903b_a_d89
+asm-api:9.10.1-216.va_9256d3b_844b_
 bootstrap5-api:5.3.8-1048.va_c299057e35c
-bouncycastle-api:2.30.1.85-299.v15f4832d1275
+bouncycastle-api:2.30.1.85.2-304.v4b_5b_62e59a_a_7
 branch-api:2.1303.v9f3b_95dc329d
 caffeine-api:3.2.4-208.v7e2da_a_7db_82b_
 cloudbees-folder:6.1106.v3a_d9a_6d2465e
@@ -98,7 +98,7 @@ credentials:1511.v2e3cb_0008ef0
 credentials-binding:728.v902a_273b_8947
 display-url-api:2.217.va_6b_de84cc74b_
 durable-task:686.v80ff80875b_82
-eddsa-api:0.3.0-13.v7cb_69ed68f00
+eddsa-api:0.3.0.1-29.v67e9a_1c969b_b_
 font-awesome-api:7.3.1-1013.v0835a_879ec6d
 git:5.10.1
 git-client:6.6.1
