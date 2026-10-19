@@ -27,8 +27,8 @@ Facts about the environment:
   built-in `grpc:` probes (or `httpGet` for the frontend), not `exec` probes.
 - The application images, `redis:alpine` and `redis:7.4-alpine` are already
   pulled onto the node.
-- The node is small: 21 pods starting together take a while, and the Java
-  `adservice` needs about a minute to come up when CPU is tight.
+- The node is small (2 vCPU): with 21 pods starting at once, expect probes to
+  fail for the first half-minute or so before everything turns Ready.
 
 Setup takes a few minutes. Wait for the terminal to say the lab is ready, then
 click **START**.
